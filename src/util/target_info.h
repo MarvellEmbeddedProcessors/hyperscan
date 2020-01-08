@@ -43,7 +43,11 @@ struct target_t {
     bool has_avx512(void) const;
 
     bool is_atom_class(void) const;
-
+#if defined(USE_SCALAR) || defined(USE_NEON)
+    bool is_tx_class(void) const;
+    bool is_otx_class(void) const;
+    int  otx_part(void) const;
+#endif
     // This asks: can this target (the object) run on code that was built for
     // "code_target". Very wordy but less likely to be misinterpreted than
     // is_compatible() or some such.

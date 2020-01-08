@@ -7,6 +7,20 @@ set (HS_PATCH_VERSION 1)
 set (HS_VERSION ${HS_MAJOR_VERSION}.${HS_MINOR_VERSION}.${HS_PATCH_VERSION})
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+
+if (NOT CMAKE_MODE)
+    message(STATUS "Default :  X86 compilation")
+else()
+    string(TOUPPER ${CMAKE_MODE} CMAKE_MODE)
+    message(STATUS "Build type ${CMAKE_MODE}")
+endif()
+
+if(CMAKE_MODE MATCHES USE_NEON)
+    set(NEON_BUILD TRUE)
+else()
+    set(NEON_BUILD FALSE)
+endif()
+
 include(CheckCCompilerFlag)
 include(CheckCXXCompilerFlag)
 include(CheckCXXSymbolExists)
@@ -174,11 +188,13 @@ else()
         string(REGEX REPLACE "-O[^ ]*" "" CMAKE_C_FLAGS_${CONFIG} "${CMAKE_C_FLAGS_${CONFIG}}")
         string(REGEX REPLACE "-O[^ ]*" "" CMAKE_CXX_FLAGS_${CONFIG} "${CMAKE_CXX_FLAGS_${CONFIG}}")
     endforeach ()
-
-    if (CMAKE_COMPILER_IS_GNUCC)
+   
+    if (TUNE_FLAG)
+        message("march=${GNUCC_ARCH}, mtune=${TUNE_FLAG}")
+    elseif (CMAKE_COMPILER_IS_GNUCC)
         message(STATUS "gcc version ${CMAKE_C_COMPILER_VERSION}")
         # If gcc doesn't recognise the host cpu, then mtune=native becomes
-        # generic, which isn't very good in some cases. march=native looks at
+        # generic, which isn't very good in some cases. march=${GNUCC_ARCH} looks at
         # cpuid info and then chooses the best microarch it can (and replaces
         # the flag), so use that for tune.
 
@@ -245,11 +261,11 @@ else()
     endif()
 
     if (NOT CMAKE_C_FLAGS MATCHES .*march.* AND NOT CMAKE_C_FLAGS MATCHES .*mtune.*)
-        set(ARCH_C_FLAGS "-march=native -mtune=${TUNE_FLAG}")
+	    set(ARCH_C_FLAGS "-march=${GNUCC_ARCH} -mtune=${TUNE_FLAG}")
     endif()
 
     if (NOT CMAKE_CXX_FLAGS MATCHES .*march.* AND NOT CMAKE_CXX_FLAGS MATCHES .*mtune.*)
-        set(ARCH_CXX_FLAGS "-march=native -mtune=${TUNE_FLAG}")
+	    set(ARCH_CXX_FLAGS "-march=${GNUCC_ARCH} -mtune=${TUNE_FLAG}")
     endif()
 
     if(CMAKE_COMPILER_IS_GNUCC)
@@ -281,9 +297,9 @@ else()
 endif()
 
 CHECK_INCLUDE_FILES(unistd.h HAVE_UNISTD_H)
+CHECK_INCLUDE_FILES(x86intrin.h HAVE_C_X86INTRIN_H)
 CHECK_INCLUDE_FILES(intrin.h HAVE_C_INTRIN_H)
 CHECK_INCLUDE_FILE_CXX(intrin.h HAVE_CXX_INTRIN_H)
-CHECK_INCLUDE_FILES(x86intrin.h HAVE_C_X86INTRIN_H)
 CHECK_INCLUDE_FILE_CXX(x86intrin.h HAVE_CXX_X86INTRIN_H)
 
 CHECK_FUNCTION_EXISTS(posix_memalign HAVE_POSIX_MEMALIGN)
@@ -319,7 +335,11 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
         set (FAT_RUNTIME_REQUISITES FALSE)
     else()
         include (${CMAKE_MODULE_PATH}/attrib.cmake)
-        if (NOT HAS_C_ATTR_IFUNC)
+        if (NEON_BUILD)
+            # NEON build does not support FAT runtime.
+            message(STATUS "Neon BUILD DOES NEED fat runtime")
+            set (FAT_RUNTIME_REQUISITES FALSE)
+        elseif (NOT HAS_C_ATTR_IFUNC)
             message(STATUS "Compiler does not support ifunc attribute, cannot build fat runtime")
             set (FAT_RUNTIME_REQUISITES FALSE)
         else ()

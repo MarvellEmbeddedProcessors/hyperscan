@@ -26,6 +26,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef AARCH64
 #include "config.h"
 #include "gtest/gtest.h"
 
@@ -446,3 +447,4 @@ TEST_P(LimExZombieTest, GetZombieStatus) {
     // The .* at the end of the pattern should have turned us into a zombie...
     ASSERT_EQ(NFA_ZOMBIE_ALWAYS_YES, nfaGetZombieStatus(nfa.get(), &q, end));
 }
+#endif

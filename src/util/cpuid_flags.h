@@ -32,9 +32,11 @@
 #include "ue2common.h"
 
 #if !defined(_WIN32) && !defined(CPUID_H_)
+#if !defined(USE_SCALAR) && !defined(USE_NEON)
 #include <cpuid.h>
  /* system header doesn't have a header guard */
 #define CPUID_H_
+#endif
 #endif
 
 #ifdef __cplusplus
@@ -46,6 +48,9 @@ extern "C"
 u64a cpuid_flags(void);
 
 u32 cpuid_tune(void);
+#if defined(USE_NEON) || defined(USE_SCALAR)
+int checkCpu(void);
+#endif
 
 #ifdef __cplusplus
 } /* extern "C" */

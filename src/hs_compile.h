@@ -1116,6 +1116,20 @@ hs_error_t HS_CDECL hs_populate_platform(hs_platform_info_t *platform);
  */
 #define HS_TUNE_FAMILY_GLM 8
 
+/**
+ * This indicates that the compiled database should be tuned for the
+ * MARVELL OCTEONTX models
+*/
+
+/* T99XX */
+#define HS_TUNE_FAMILY_T99 9
+
+/* T8XXX */
+#define HS_TUNE_FAMILY_T81 10
+#define HS_TUNE_FAMILY_T83 11
+#define HS_TUNE_FAMILY_T88 12
+#define HS_TUNE_FAMILY_T8X 13
+
 /** @} */
 
 /**

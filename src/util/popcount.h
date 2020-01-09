@@ -38,6 +38,9 @@
 
 static really_inline
 u32 popcount32(u32 x) {
+#if defined(USE_SCALAR) || defined(USE_NEON)
+  return __builtin_popcount (x);
+#endif
 #if defined(HAVE_POPCOUNT_INSTR)
     // Single-instruction builtin.
     return _mm_popcnt_u32(x);
@@ -52,6 +55,9 @@ u32 popcount32(u32 x) {
 
 static really_inline
 u32 popcount64(u64a x) {
+#if defined(USE_SCALAR) || defined(USE_NEON)
+  return __builtin_popcountll (x);
+#endif
 #if defined(ARCH_X86_64)
 # if defined(HAVE_POPCOUNT_INSTR)
     // Single-instruction builtin.

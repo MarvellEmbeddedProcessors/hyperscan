@@ -889,6 +889,13 @@ char nfaExecMcSheng16_Q2i(const struct NFA *n, u64a offset, const u8 *buffer,
         return MO_ALIVE;
     }
 
+#ifdef AARCH64
+    __builtin_prefetch(&m->remap[0]);
+    __builtin_prefetch(&m->remap[64]);
+    __builtin_prefetch(&m->remap[128]);
+    __builtin_prefetch(&m->remap[192]);
+#endif
+
     while (1) {
         assert(q->cur < q->end);
         s64a ep = q->items[q->cur].location;
@@ -1016,6 +1023,13 @@ char nfaExecMcSheng8_Q2i(const struct NFA *n, u64a offset, const u8 *buffer,
         *(u8 *)q->state = s;
         return MO_ALIVE;
     }
+
+#ifdef AARCH64
+    __builtin_prefetch(&m->remap[0]);
+    __builtin_prefetch(&m->remap[64]);
+    __builtin_prefetch(&m->remap[128]);
+    __builtin_prefetch(&m->remap[192]);
+#endif
 
     while (1) {
         DEBUG_PRINTF("%s @ %llu\n", q->items[q->cur].type == MQE_TOP ? "TOP" :

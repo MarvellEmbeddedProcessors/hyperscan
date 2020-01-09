@@ -26,6 +26,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef AARCH64
 #include "config.h"
 
 #include "ue2common.h"
@@ -742,3 +743,4 @@ TEST(FDR, FDRTermB) {
     ASSERT_EQ(1U, matches.size());
     matches.clear();
 }
+#endif

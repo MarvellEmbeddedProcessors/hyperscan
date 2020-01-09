@@ -33,15 +33,14 @@ static really_inline m128 getMask(u8 c, bool noCase) {
     return set16x8(k);
 }
 
-static really_inline m128 getCaseMask(void) {
-    return set16x8(0xdf);
-}
+static really_inline m128 getCaseMask(void) { return set16x8(0xdf); }
 
-static really_inline
-hwlm_error_t scanSingleShort(const struct noodTable *n, const u8 *buf,
-                             size_t len, bool noCase, m128 caseMask, m128 mask1,
-                             const struct cb_info *cbi, size_t start,
-                             size_t end) {
+static really_inline hwlm_error_t scanSingleShort(const struct noodTable *n,
+                                                  const u8 *buf, size_t len,
+                                                  bool noCase, m128 caseMask,
+                                                  m128 mask1,
+                                                  const struct cb_info *cbi,
+                                                  size_t start, size_t end) {
     const u8 *d = buf + start;
     size_t l = end - start;
     DEBUG_PRINTF("l %zu\n", l);
@@ -66,12 +65,10 @@ hwlm_error_t scanSingleShort(const struct noodTable *n, const u8 *buf,
     return HWLM_SUCCESS;
 }
 
-static really_inline
-hwlm_error_t scanSingleUnaligned(const struct noodTable *n, const u8 *buf,
-                                 size_t len, size_t offset, bool noCase,
-                                 m128 caseMask, m128 mask1,
-                                 const struct cb_info *cbi, size_t start,
-                                 size_t end) {
+static really_inline hwlm_error_t
+scanSingleUnaligned(const struct noodTable *n, const u8 *buf, size_t len,
+                    size_t offset, bool noCase, m128 caseMask, m128 mask1,
+                    const struct cb_info *cbi, size_t start, size_t end) {
     const u8 *d = buf + offset;
     DEBUG_PRINTF("start %zu end %zu offset %zu\n", start, end, offset);
     const size_t l = end - start;
@@ -96,11 +93,12 @@ hwlm_error_t scanSingleUnaligned(const struct noodTable *n, const u8 *buf,
     return HWLM_SUCCESS;
 }
 
-static really_inline
-hwlm_error_t scanDoubleShort(const struct noodTable *n, const u8 *buf,
-                             size_t len, bool noCase, m128 caseMask, m128 mask1,
-                             m128 mask2, const struct cb_info *cbi,
-                             size_t start, size_t end) {
+static really_inline hwlm_error_t scanDoubleShort(const struct noodTable *n,
+                                                  const u8 *buf, size_t len,
+                                                  bool noCase, m128 caseMask,
+                                                  m128 mask1, m128 mask2,
+                                                  const struct cb_info *cbi,
+                                                  size_t start, size_t end) {
     const u8 *d = buf + start;
     size_t l = end - start;
     if (!l) {
@@ -115,8 +113,8 @@ hwlm_error_t scanDoubleShort(const struct noodTable *n, const u8 *buf,
         v = and128(v, caseMask);
     }
 
-    u32 z = movemask128(and128(lshiftbyte_m128(eq128(mask1, v), 1),
-                               eq128(mask2, v)));
+    u32 z = movemask128(
+        and128(lshiftbyte_m128(eq128(mask1, v), 1), eq128(mask2, v)));
 
     // mask out where we can't match
     u32 mask = (0xFFFF >> (16 - l));
@@ -127,12 +125,10 @@ hwlm_error_t scanDoubleShort(const struct noodTable *n, const u8 *buf,
     return HWLM_SUCCESS;
 }
 
-static really_inline
-hwlm_error_t scanDoubleUnaligned(const struct noodTable *n, const u8 *buf,
-                                 size_t len, size_t offset, bool noCase,
-                                 m128 caseMask, m128 mask1, m128 mask2,
-                                 const struct cb_info *cbi, size_t start,
-                                 size_t end) {
+static really_inline hwlm_error_t scanDoubleUnaligned(
+    const struct noodTable *n, const u8 *buf, size_t len, size_t offset,
+    bool noCase, m128 caseMask, m128 mask1, m128 mask2,
+    const struct cb_info *cbi, size_t start, size_t end) {
     const u8 *d = buf + offset;
     DEBUG_PRINTF("start %zu end %zu offset %zu\n", start, end, offset);
     size_t l = end - start;
@@ -143,8 +139,8 @@ hwlm_error_t scanDoubleUnaligned(const struct noodTable *n, const u8 *buf,
         v = and128(v, caseMask);
     }
 
-    u32 z = movemask128(and128(lshiftbyte_m128(eq128(mask1, v), 1),
-                               eq128(mask2, v)));
+    u32 z = movemask128(
+        and128(lshiftbyte_m128(eq128(mask1, v), 1), eq128(mask2, v)));
 
     // mask out where we can't match
     u32 buf_off = start - offset;
@@ -157,11 +153,12 @@ hwlm_error_t scanDoubleUnaligned(const struct noodTable *n, const u8 *buf,
     return HWLM_SUCCESS;
 }
 
-static really_inline
-hwlm_error_t scanSingleFast(const struct noodTable *n, const u8 *buf,
-                            size_t len, bool noCase, m128 caseMask, m128 mask1,
-                            const struct cb_info *cbi, size_t start,
-                            size_t end) {
+static really_inline hwlm_error_t scanSingleFast(const struct noodTable *n,
+                                                 const u8 *buf, size_t len,
+                                                 bool noCase, m128 caseMask,
+                                                 m128 mask1,
+                                                 const struct cb_info *cbi,
+                                                 size_t start, size_t end) {
     const u8 *d = buf + start, *e = buf + end;
     assert(d < e);
 
@@ -178,11 +175,12 @@ hwlm_error_t scanSingleFast(const struct noodTable *n, const u8 *buf,
     return HWLM_SUCCESS;
 }
 
-static really_inline
-hwlm_error_t scanDoubleFast(const struct noodTable *n, const u8 *buf,
-                            size_t len, bool noCase, m128 caseMask, m128 mask1,
-                            m128 mask2, const struct cb_info *cbi, size_t start,
-                            size_t end) {
+static really_inline hwlm_error_t scanDoubleFast(const struct noodTable *n,
+                                                 const u8 *buf, size_t len,
+                                                 bool noCase, m128 caseMask,
+                                                 m128 mask1, m128 mask2,
+                                                 const struct cb_info *cbi,
+                                                 size_t start, size_t end) {
     const u8 *d = buf + start, *e = buf + end;
     assert(d < e);
     m128 lastz1 = zeroes128();
@@ -191,7 +189,30 @@ hwlm_error_t scanDoubleFast(const struct noodTable *n, const u8 *buf,
         m128 v = noCase ? and128(load128(d), caseMask) : load128(d);
         m128 z1 = eq128(mask1, v);
         m128 z2 = eq128(mask2, v);
+#ifdef USE_SCALAR
+        m128 r = {0, 0};
+        char *_a = (char *)&z1;
+        char *_b = (char *)&lastz1;
+        char *_r = (char *)&r;
+        unsigned int i = 0, j = 0, offset = 15;
+        /* palignr - shift 'b' right offset,
+                     shift 'a' left (15 - offset) and concatenate */
+        if (offset < (int)sizeof(lastz1))
+            for (i = 0; i + offset < sizeof(r); i++)
+                _r[i] = _b[i + offset];
+
+        if (offset >= (int)sizeof(lastz1)) {
+            /* Case shouldn't arise ? */
+            offset -= sizeof(lastz1);
+        }
+
+        for (j = 0; j + i < sizeof(r); j++)
+            _r[j + i] = _a[j];
+
+        u32 z = movemask128(and128(r, z2));
+#else
         u32 z = movemask128(and128(palignr(z1, lastz1, 15), z2));
+#endif
         lastz1 = z1;
 
         // On large packet buffers, this prefetch appears to get us about 2%.

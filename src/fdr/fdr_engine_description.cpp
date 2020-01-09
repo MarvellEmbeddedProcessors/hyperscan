@@ -93,7 +93,13 @@ u32 findDesiredStride(size_t num_lits, size_t min_len, size_t min_len_count) {
 
     return desiredStride;
 }
-
+#if defined(USE_SCALAR) || defined(USE_NEON)
+int optmax=1;
+static inline
+int checkCap() {
+	return sysconf(_SC_NPROCESSORS_CONF);
+}
+#endif
 unique_ptr<FDREngineDescription> chooseEngine(const target_t &target,
                                               const vector<hwlmLiteral> &vl,
                                               bool make_small) {
@@ -173,9 +179,22 @@ unique_ptr<FDREngineDescription> chooseEngine(const target_t &target,
                  * tables on lightweight machines due to their small caches. */
                 ideal -= 2;
             }
+#if defined(USE_SCALAR) || defined(USE_NEON)
+            if (target.is_otx_class()) {
+	            optmax = 0;
+	            ideal -= 2;
+	        }
+            if (target.otx_part()== HS_TUNE_FAMILY_T81) {
+	            ideal -= 2; /*abd: revert change through 24 core check for 83xx.*/
+	        }
+            if((checkCap()!=24) && (checkCap()!= 4) && (checkCap() != 32) && (checkCap() != 48))
+	        	ideal += 2;
+#endif
 
             score -= absdiff(ideal, domain);
-
+#if defined(USE_SCALAR) || defined(USE_NEON)
+	        ideal += 2*optmax;
+#endif
             DEBUG_PRINTF("fdr %u: width=%u, domain=%u, buckets=%u, stride=%zu "
                          "-> score=%u\n",
                          eng.getID(), eng.schemeWidth, domain,

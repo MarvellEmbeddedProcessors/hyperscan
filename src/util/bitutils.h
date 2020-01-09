@@ -43,6 +43,9 @@
 #define DOUBLE_CASE_CLEAR 0xdfdf
 #define OCTO_CASE_CLEAR   0xdfdfdfdfdfdfdfdfULL
 
+#if defined(USE_SCALAR) || defined(USE_NEON)
+#define NO_ASM
+#endif
 static really_inline
 u32 clz32(u32 x) {
     assert(x); // behaviour not defined for x == 0

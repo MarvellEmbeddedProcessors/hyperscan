@@ -72,6 +72,9 @@ struct cb_info {
 #define Z_TYPE u32
 #endif
 
+#if defined(USE_SCALAR)
+#define really_inline __attribute__ ((unused))
+#endif
 
 #define RETURN_IF_TERMINATED(x)                                                \
     {                                                                          \

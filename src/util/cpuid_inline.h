@@ -33,9 +33,11 @@
 #include "cpuid_flags.h"
 
 #if !defined(_WIN32) && !defined(CPUID_H_)
+#if !defined(USE_SCALAR) && !defined(USE_NEON)
 #include <cpuid.h>
 /* system header doesn't have a header guard */
 #define CPUID_H_
+#endif
 #endif
 
 #ifdef __cplusplus
@@ -46,6 +48,9 @@ extern "C"
 static inline
 void cpuid(unsigned int op, unsigned int leaf, unsigned int *eax,
            unsigned int *ebx, unsigned int *ecx, unsigned int *edx) {
+#if defined(USE_SCALAR) || defined(USE_NEON)
+    return;
+#else
 #ifndef _WIN32
     __cpuid_count(op, leaf, *eax, *ebx, *ecx, *edx);
 #else
@@ -55,6 +60,7 @@ void cpuid(unsigned int op, unsigned int leaf, unsigned int *eax,
     *ebx = a[1];
     *ecx = a[2];
     *edx = a[3];
+#endif
 #endif
 }
 

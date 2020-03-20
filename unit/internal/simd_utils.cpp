@@ -759,7 +759,6 @@ TEST(SimdUtilsTest, variableByteShift128) {
                          variable_byte_shift_m128(in, 9)));
     EXPECT_TRUE(!diff128(lshiftbyte_m128(in, 10),
                          variable_byte_shift_m128(in, 10)));
-
     EXPECT_TRUE(!diff128(zeroes128(), variable_byte_shift_m128(in, 16)));
     EXPECT_TRUE(!diff128(zeroes128(), variable_byte_shift_m128(in, -16)));
 }

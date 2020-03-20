@@ -191,7 +191,30 @@ hwlm_error_t scanDoubleFast(const struct noodTable *n, const u8 *buf,
         m128 v = noCase ? and128(load128(d), caseMask) : load128(d);
         m128 z1 = eq128(mask1, v);
         m128 z2 = eq128(mask2, v);
+#ifdef USE_SCALAR
+        m128 r = {0, 0};
+        char *_a = (char *)&z1;
+        char *_b = (char *)&lastz1;
+        char *_r = (char *)&r;
+        unsigned int i = 0, j = 0, offset = 15;
+        /* palignr - shift 'b' right offset,
+                     shift 'a' left (15 - offset) and concatenate */
+        if (offset < (int)sizeof(lastz1))
+            for (i = 0; i + offset < sizeof(r); i++)
+                _r[i] = _b[i + offset];
+
+        if (offset >= (int)sizeof(lastz1)) {
+            /* Case shouldn't arise ? */
+            offset -= sizeof(lastz1);
+        }
+
+        for (j = 0; j + i < sizeof(r); j++)
+            _r[j + i] = _a[j];
+
+        u32 z = movemask128(and128(r, z2));
+#else
         u32 z = movemask128(and128(palignr(z1, lastz1, 15), z2));
+#endif
         lastz1 = z1;
 
         // On large packet buffers, this prefetch appears to get us about 2%.

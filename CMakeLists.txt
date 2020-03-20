@@ -1,12 +1,26 @@
 cmake_minimum_required (VERSION 2.8.11)
 project (hyperscan C CXX)
 
-set (HS_MAJOR_VERSION 5)
-set (HS_MINOR_VERSION 2)
-set (HS_PATCH_VERSION 1)
+set (HS_MAJOR_VERSION 4)
+set (HS_MINOR_VERSION 7)
+set (HS_PATCH_VERSION 0)
 set (HS_VERSION ${HS_MAJOR_VERSION}.${HS_MINOR_VERSION}.${HS_PATCH_VERSION})
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+
+if (NOT CMAKE_MODE)
+    message(STATUS "Default :  X86 compilation")
+else()
+    string(TOUPPER ${CMAKE_MODE} CMAKE_MODE)
+    message(STATUS "Build type ${CMAKE_MODE}")
+endif()
+
+if(CMAKE_MODE MATCHES USE_NEON)
+    set(NEON_BUILD TRUE)
+else()
+    set(NEON_BUILD FALSE)
+endif()
+
 include(CheckCCompilerFlag)
 include(CheckCXXCompilerFlag)
 include(CheckCXXSymbolExists)
@@ -174,11 +188,13 @@ else()
         string(REGEX REPLACE "-O[^ ]*" "" CMAKE_C_FLAGS_${CONFIG} "${CMAKE_C_FLAGS_${CONFIG}}")
         string(REGEX REPLACE "-O[^ ]*" "" CMAKE_CXX_FLAGS_${CONFIG} "${CMAKE_CXX_FLAGS_${CONFIG}}")
     endforeach ()
-
-    if (CMAKE_COMPILER_IS_GNUCC)
+   
+    if (TUNE_FLAG)
+        message("march=${GNUCC_ARCH}, mtune=${TUNE_FLAG}")
+    elseif (CMAKE_COMPILER_IS_GNUCC)
         message(STATUS "gcc version ${CMAKE_C_COMPILER_VERSION}")
         # If gcc doesn't recognise the host cpu, then mtune=native becomes
-        # generic, which isn't very good in some cases. march=native looks at
+        # generic, which isn't very good in some cases. march=${GNUCC_ARCH} looks at
         # cpuid info and then chooses the best microarch it can (and replaces
         # the flag), so use that for tune.
 
@@ -245,11 +261,11 @@ else()
     endif()
 
     if (NOT CMAKE_C_FLAGS MATCHES .*march.* AND NOT CMAKE_C_FLAGS MATCHES .*mtune.*)
-        set(ARCH_C_FLAGS "-march=native -mtune=${TUNE_FLAG}")
+	    set(ARCH_C_FLAGS "-march=${GNUCC_ARCH} -mtune=${TUNE_FLAG}")
     endif()
 
     if (NOT CMAKE_CXX_FLAGS MATCHES .*march.* AND NOT CMAKE_CXX_FLAGS MATCHES .*mtune.*)
-        set(ARCH_CXX_FLAGS "-march=native -mtune=${TUNE_FLAG}")
+	    set(ARCH_CXX_FLAGS "-march=${GNUCC_ARCH} -mtune=${TUNE_FLAG}")
     endif()
 
     if(CMAKE_COMPILER_IS_GNUCC)
@@ -319,7 +335,11 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
         set (FAT_RUNTIME_REQUISITES FALSE)
     else()
         include (${CMAKE_MODULE_PATH}/attrib.cmake)
-        if (NOT HAS_C_ATTR_IFUNC)
+        if (NEON_BUILD)
+            # NEON build does not support FAT runtime.
+            message(STATUS "Neon BUILD DOES NEED fat runtime")
+            set (FAT_RUNTIME_REQUISITES FALSE)
+        elseif (NOT HAS_C_ATTR_IFUNC)
             message(STATUS "Compiler does not support ifunc attribute, cannot build fat runtime")
             set (FAT_RUNTIME_REQUISITES FALSE)
         else ()
@@ -328,6 +348,7 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
     endif()
     CMAKE_DEPENDENT_OPTION(FAT_RUNTIME "Build a library that supports multiple microarchitecures" ${RELEASE_BUILD} "FAT_RUNTIME_REQUISITES" OFF)
 endif ()
+
 
 include (${CMAKE_MODULE_PATH}/arch.cmake)
 
@@ -451,30 +472,9 @@ endif()
 
 add_subdirectory(util)
 add_subdirectory(doc/dev-reference)
-
-if (NOT WIN32)
-# PCRE check, we have a fixed requirement for PCRE to use Chimera
-# and hscollider
-set(PCRE_REQUIRED_MAJOR_VERSION 8)
-set(PCRE_REQUIRED_MINOR_VERSION 41)
-set(PCRE_REQUIRED_VERSION ${PCRE_REQUIRED_MAJOR_VERSION}.${PCRE_REQUIRED_MINOR_VERSION})
-include (${CMAKE_MODULE_PATH}/pcre.cmake)
-if (NOT CORRECT_PCRE_VERSION)
-    message(STATUS "PCRE ${PCRE_REQUIRED_VERSION} or above not found")
-endif()
-
-# we need static libs for Chimera - too much deep magic for shared libs
-if (CORRECT_PCRE_VERSION AND PCRE_BUILD_SOURCE AND BUILD_STATIC_LIBS)
-    set(BUILD_CHIMERA TRUE)
-endif()
-
 add_subdirectory(unit)
 if (EXISTS ${CMAKE_SOURCE_DIR}/tools/CMakeLists.txt)
     add_subdirectory(tools)
-endif()
-if (EXISTS ${CMAKE_SOURCE_DIR}/chimera/CMakeLists.txt AND BUILD_CHIMERA)
-    add_subdirectory(chimera)
-endif()
 endif()
 
 # do substitutions
@@ -502,31 +502,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${EXTRA_CXX_FLAGS} ${HS_CXX_FLAGS}")
 else()
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${EXTRA_C_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${EXTRA_CXX_FLAGS}")
-endif()
-
-if (WIN32)
-# PCRE check, we have a fixed requirement for PCRE to use Chimera
-# and hscollider
-set(PCRE_REQUIRED_MAJOR_VERSION 8)
-set(PCRE_REQUIRED_MINOR_VERSION 41)
-set(PCRE_REQUIRED_VERSION ${PCRE_REQUIRED_MAJOR_VERSION}.${PCRE_REQUIRED_MINOR_VERSION})
-include (${CMAKE_MODULE_PATH}/pcre.cmake)
-if (NOT CORRECT_PCRE_VERSION)
-    message(STATUS "PCRE ${PCRE_REQUIRED_VERSION} or above not found")
-endif()
-
-# we need static libs for Chimera - too much deep magic for shared libs
-if (CORRECT_PCRE_VERSION AND PCRE_BUILD_SOURCE AND BUILD_STATIC_LIBS)
-    set(BUILD_CHIMERA TRUE)
-endif()
-
-add_subdirectory(unit)
-if (EXISTS ${CMAKE_SOURCE_DIR}/tools/CMakeLists.txt)
-    add_subdirectory(tools)
-endif()
-if (EXISTS ${CMAKE_SOURCE_DIR}/chimera/CMakeLists.txt AND BUILD_CHIMERA)
-    add_subdirectory(chimera)
-endif()
 endif()
 
 if(NOT WIN32)
@@ -910,6 +885,7 @@ SET (hs_compile_SRCS
     src/nfagraph/ng_stop.h
     src/nfagraph/ng_uncalc_components.cpp
     src/nfagraph/ng_uncalc_components.h
+    src/nfagraph/ng_undirected.h
     src/nfagraph/ng_utf8.cpp
     src/nfagraph/ng_utf8.h
     src/nfagraph/ng_util.cpp
@@ -964,8 +940,6 @@ SET (hs_compile_SRCS
     src/parser/check_refs.h
     src/parser/control_verbs.cpp
     src/parser/control_verbs.h
-    src/parser/logical_combination.cpp
-    src/parser/logical_combination.h
     src/parser/parse_error.cpp
     src/parser/parse_error.h
     src/parser/parser_util.cpp
@@ -1065,7 +1039,6 @@ SET (hs_compile_SRCS
     src/util/graph.h
     src/util/graph_range.h
     src/util/graph_small_color_map.h
-    src/util/graph_undirected.h
     src/util/hash.h
     src/util/hash_dynamic_bitset.h
     src/util/insertion_ordered.h
@@ -1300,14 +1273,12 @@ endif()
 if (BUILD_STATIC_AND_SHARED OR BUILD_SHARED_LIBS)
     if (NOT FAT_RUNTIME)
         add_library(hs_runtime_shared SHARED src/hs_version.c
-            src/hs_valid_platform.c $<TARGET_OBJECTS:hs_exec_shared>
-            hs_runtime.def)
+            src/hs_valid_platform.c $<TARGET_OBJECTS:hs_exec_shared>)
     else()
         add_library(hs_runtime_shared SHARED src/hs_version.c
             src/hs_valid_platform.c
             $<TARGET_OBJECTS:hs_exec_common_shared>
-            ${RUNTIME_SHLIBS}
-            hs_runtime.def)
+            ${RUNTIME_SHLIBS})
     endif()
     set_target_properties(hs_runtime_shared PROPERTIES
         VERSION ${LIB_VERSION}
@@ -1353,7 +1324,7 @@ if (BUILD_STATIC_AND_SHARED OR BUILD_SHARED_LIBS)
             ${RUNTIME_SHLIBS})
     endif ()
 
-    add_library(hs_shared SHARED ${hs_shared_SRCS} hs.def)
+    add_library(hs_shared SHARED ${hs_shared_SRCS})
 
     add_dependencies(hs_shared ragel_Parser)
     set_target_properties(hs_shared PROPERTIES

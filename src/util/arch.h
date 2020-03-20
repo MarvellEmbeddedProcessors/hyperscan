@@ -83,4 +83,10 @@
 #define NO_ASM
 #endif
 
+#if defined(USE_SCALAR) || defined (USE_NEON)
+/* disable intel assembly for scalar for portability to thunder */
+#define NO_ASM
+#include "scalar.h"
+#endif
+
 #endif // UTIL_ARCH_H_

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019, Intel Corporation
+ * Copyright (c) 2015-2017, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -58,19 +58,9 @@
 #include <string>
 #include <vector>
 
-#ifndef _WIN32
 #include <getopt.h>
-#else
-#include "win_getopt.h"
-#endif
 #include <sys/stat.h>
-
-#ifndef _WIN32
 #include <dirent.h>
-#else
-#include <direct.h>
-#define stat _stat
-#endif
 
 #include <boost/ptr_container/ptr_vector.hpp>
 
@@ -106,8 +96,6 @@ bool dump_intermediate = true;
 bool force_edit_distance = false;
 u32 edit_distance = 0;
 
-int use_literal_api = 0;
-
 } // namespace
 
 // Usage statement.
@@ -141,7 +129,6 @@ void usage(const char *name, const char *error) {
     printf("  -8              Force UTF8 mode on all patterns.\n");
     printf("  -L              Apply HS_FLAG_SOM_LEFTMOST to all patterns.\n");
     printf(" --prefilter      Apply HS_FLAG_PREFILTER to all patterns.\n");
-    printf(" --literal-on     Use Hyperscan pure literal matching API.\n");
     printf("\n");
     printf("Example:\n");
     printf("$ %s -e pattern.file -s sigfile\n", name);
@@ -166,7 +153,6 @@ void processArgs(int argc, char *argv[], Grey &grey) {
         {"utf8",                no_argument,        nullptr, '8'},
         {"prefilter",           no_argument,        &force_prefilter, 1},
         {"som-width",           required_argument,  nullptr, 'd'},
-        {"literal-on",          no_argument,        &use_literal_api, 1},
         {nullptr, 0, nullptr, 0}
     };
 
@@ -332,7 +318,6 @@ u32 buildDumpFlags(void) {
     return flags;
 }
 
-#ifndef _WIN32
 static
 void clearDir(const string &path) {
     DIR *dir = opendir(path.c_str());
@@ -356,54 +341,15 @@ void clearDir(const string &path) {
     }
     closedir(dir);
 }
-#else // windows
-static
-void clearDir(const string &path) {
-    WIN32_FIND_DATA ffd;
-    HANDLE hFind = INVALID_HANDLE_VALUE;
-    string glob = path + "/*";
-    hFind = FindFirstFile(glob.c_str(), &ffd);
-    if (hFind == INVALID_HANDLE_VALUE) {
-        printf("ERROR: couldn't open location %s\n", path.c_str());
-        exit(1);
-    }
-    do {
-        string basename(ffd.cFileName);
-        string fname(path);
-        fname.push_back('/');
-        fname.append(basename);
-
-        // Ignore '.' and '..'
-        if (basename == "." || basename == "..") {
-            continue;
-        }
-
-        if (!DeleteFile(fname.c_str())) {
-            printf("ERROR: couldn't remove file %s\n", fname.c_str());
-        }
-
-    } while (FindNextFile(hFind, &ffd) != 0);
-    FindClose(hFind);
-}
-#endif
-
-static
-int makeDirectory(const string &dirName) {
-#ifndef _WIN32
-    mode_t mode = S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP |
-                  S_IROTH | S_IXOTH;
-    return mkdir(dirName.c_str(), mode);
-#else
-    return _mkdir(dirName.c_str());
-#endif
-}
 
 static
 void prepareDumpLoc(string parent, string path, u32 flags, Grey &grey) {
     struct stat st;
     if (stat(parent.c_str(), &st)) {
         // Create dump location if not found
-        if (makeDirectory(parent) < 0) {
+        mode_t mode = S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP |
+                      S_IROTH | S_IXOTH;
+        if (mkdir(parent.c_str(), mode) < 0) {
             printf("ERROR: could not create dump location %s: %s\n",
                    parent.c_str(), strerror(errno));
             exit(1);
@@ -419,7 +365,9 @@ void prepareDumpLoc(string parent, string path, u32 flags, Grey &grey) {
     path = parent.append(path);
     if (stat(path.c_str(), &st)) {
         // Create dump location if not found
-        if (makeDirectory(path) < 0) {
+        mode_t mode = S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP |
+                      S_IROTH | S_IXOTH;
+        if (mkdir(path.c_str(), mode) < 0) {
             printf("ERROR: could not create dump location %s: %s\n",
                    path.c_str(), strerror(errno));
             exit(1);
@@ -505,23 +453,9 @@ unsigned int dumpDataMulti(const vector<const char *> &patterns,
     hs_database_t *db = nullptr;
     hs_compile_error_t *compile_err;
 
-    hs_error_t err;
-    const size_t count = patterns.size();
-    if (use_literal_api) {
-        // Compute length of each pattern.
-        vector<size_t> lens(count);
-        for (unsigned int i = 0; i < count; i++) {
-            lens[i] = strlen(patterns[i]);
-        }
-        err = hs_compile_lit_multi_int(patterns.data(), flags.data(),
-                                       ids.data(), ext.c_array(), lens.data(),
-                                       count, mode, plat_info.get(), &db,
-                                       &compile_err, grey);
-    } else {
-        err = hs_compile_multi_int(patterns.data(), flags.data(), ids.data(),
-                                   ext.c_array(), count, mode, plat_info.get(),
-                                   &db, &compile_err, grey);
-    }
+    hs_error_t err = hs_compile_multi_int(
+        patterns.data(), flags.data(), ids.data(), ext.c_array(),
+        patterns.size(), mode, plat_info.get(), &db, &compile_err, grey);
 
     if (err != HS_SUCCESS) {
         if (compile_err && compile_err->message) {
@@ -612,7 +546,7 @@ unsigned int dumpData(const ExpressionMap &exprMap, Grey &grey) {
     return dumpDataMulti(patterns, flags, ids, ext, grey);
 }
 
-int HS_CDECL main(int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     Grey grey;
     grey.dumpFlags = Grey::DUMP_BASICS;
 

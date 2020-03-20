@@ -34,11 +34,23 @@
 #include "util/arch.h"
 
 #if !defined(_WIN32) && !defined(CPUID_H_)
+#if !defined(USE_SCALAR) && !defined(USE_NEON)
 #include <cpuid.h>
 #endif
+#endif
 
+#if defined(USE_NEON) || defined(USE_SCALAR)
+#include <asm/hwcap.h>
+#include <sys/auxv.h>
+#include <stdio.h>
+#define _AT_HWCAP  16
+#define _HWCAP_CPUID (1 << 11)
+#endif
 u64a cpuid_flags(void) {
     u64a cap = 0;
+#if defined(USE_SCALAR) || defined(USE_NEON)
+    return cap;
+#endif
 
     if (check_avx2()) {
         DEBUG_PRINTF("AVX2 enabled\n");
@@ -126,7 +138,50 @@ const char *dumpTune(u32 tune) {
 }
 #endif
 
+
+unsigned long mid = -1;
 u32 cpuid_tune(void) {
+#if defined(USE_SCALAR) || defined(USE_NEON)
+	if(mid==-1) {
+		if ((getauxval(_AT_HWCAP) & _HWCAP_CPUID)) {
+			__asm("mrs %0, MIDR_EL1" : "=r" (mid));
+		} else {
+			FILE *fptr;
+			char *eptr;
+			char buf[20];
+			int len;
+			fptr = fopen("/sys/devices/system/cpu/cpu0/regs/identification/midr_el1", "r");
+			if (fptr == NULL)
+				return 1;
+			len = fread(buf, 1, 20,fptr);
+			buf[len]=0;
+			mid = strtoull(buf, &eptr, 0);
+			fclose(fptr);
+		}
+	}
+	if(((mid>>24) & 0xff) == 0x43) {
+
+		int id = (mid>>4) & 0xfff;
+
+		switch(id) {
+			case 0xa1:
+				return HS_TUNE_FAMILY_T88;
+			case 0xa2:
+				return HS_TUNE_FAMILY_T81;
+			case 0xa3:
+				return HS_TUNE_FAMILY_T83;
+			default:
+				return HS_TUNE_FAMILY_T8X;
+		}
+	}
+	else if(((mid>>24) & 0xff) == 0x42 && (((mid>>4) & 0xfff) == 0x516)) {
+		return HS_TUNE_FAMILY_T99;
+	}
+	else {
+		mid = 0;
+		return HS_TUNE_FAMILY_GENERIC;
+	}
+#else
     unsigned int eax, ebx, ecx, edx;
 
     cpuid(1, 0, &eax, &ebx, &ecx, &edx);
@@ -154,6 +209,6 @@ u32 cpuid_tune(void) {
         DEBUG_PRINTF("found tune flag %s\n", dumpTune(tune) );
         return tune;
     }
-
+#endif
     return HS_TUNE_FAMILY_GENERIC;
 }

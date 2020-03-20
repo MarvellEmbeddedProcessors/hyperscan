@@ -60,11 +60,12 @@ bool isAllowedCodepoint(u32 val) {
     return true;
 }
 
-bool isValidUtf8(const char *expression, const size_t len) {
+bool isValidUtf8(const char *expression) {
     if (!expression) {
         return true;
     }
 
+    const size_t len = strlen(expression);
     const u8 *s = (const u8 *)expression;
     u32 val;
 

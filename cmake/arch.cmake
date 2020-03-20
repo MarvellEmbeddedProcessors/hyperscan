@@ -2,12 +2,14 @@
 #
 # must be called after determining where compiler intrinsics are defined
 
-if (HAVE_C_X86INTRIN_H)
+if (NEON_BUILD)
+    set (INTRIN_INC_H "arm_neon.h")
+elseif (HAVE_C_X86INTRIN_H)
     set (INTRIN_INC_H "x86intrin.h")
 elseif (HAVE_C_INTRIN_H)
     set (INTRIN_INC_H "intrin.h")
 else ()
-    message (FATAL_ERROR "No intrinsics header found")
+    message (STATUS "No intrinsics header found")
 endif ()
 
 if (BUILD_AVX512)
@@ -17,7 +19,9 @@ if (BUILD_AVX512)
     endif ()
 endif ()
 
-if (FAT_RUNTIME)
+if (NEON_BUILD)
+    set (CMAKE_REQUIRED_FLAGS "${CMAKE_C_FLAGS} ${EXTRA_C_FLAGS} ${ARCH_C_FLAGS}")
+elseif (FAT_RUNTIME)
     # test the highest level microarch to make sure everything works
     if (BUILD_AVX512)
         set (CMAKE_REQUIRED_FLAGS "${CMAKE_C_FLAGS} ${EXTRA_C_FLAGS} ${SKYLAKE_FLAG}")
@@ -58,7 +62,10 @@ int main(){
     (void)_mm512_abs_epi8(z);
 }" HAVE_AVX512)
 
-if (FAT_RUNTIME)
+if (NEON_BUILD)
+    message(STATUS "Building with NEON support")
+    add_definitions(-DUSE_NEON -DARCH_64_BIT)
+elseif (FAT_RUNTIME)
     if (NOT HAVE_SSSE3)
         message(FATAL_ERROR "SSSE3 support required to build fat runtime")
     endif ()
@@ -76,7 +83,14 @@ else (NOT FAT_RUNTIME)
         message(STATUS "Building without AVX512 support")
     endif ()
     if (NOT HAVE_SSSE3)
-        message(FATAL_ERROR "A minimum of SSSE3 compiler support is required")
+       # message(FATAL_ERROR "A minimum of SSSE3 compiler support is required")
+    if (NEON_BUILD)   
+        message(STATUS "Building with NEON support")
+        add_definitions(-DUSE_NEON -DARCH_64_BIT)
+    else()
+        message(STATUS "Building using SW definitions for intrinsics")
+        add_definitions(-DUSE_SCALAR -DARCH_64_BIT)
+    endif ()
     endif ()
 endif ()
 

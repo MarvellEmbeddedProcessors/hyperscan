@@ -67,5 +67,22 @@ bool target_t::has_avx512(void) const {
 bool target_t::is_atom_class(void) const {
     return tune == HS_TUNE_FAMILY_SLM || tune == HS_TUNE_FAMILY_GLM;
 }
+#if defined(USE_SCALAR) || defined(USE_NEON)
+bool target_t::is_tx_class(void) const {
+    return tune == HS_TUNE_FAMILY_T99;
+}
+
+bool target_t::is_otx_class(void) const {
+    if((tune == HS_TUNE_FAMILY_T81) || (tune == HS_TUNE_FAMILY_T83) 
+	|| (tune == HS_TUNE_FAMILY_T88))
+    	return 1;
+    else 
+	return 0;
+}
+
+int target_t::otx_part(void) const {
+    return tune;
+}
+#endif
 
 } // namespace ue2

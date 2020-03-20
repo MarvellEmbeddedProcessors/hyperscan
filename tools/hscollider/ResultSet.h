@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018, Intel Corporation
+ * Copyright (c) 2015-2017, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -35,36 +35,25 @@
 #include <utility>
 #include <vector>
 
-// Type for capturing groups: a vector of (from, to) offsets, with both set to
-// -1 for inactive groups (like pcre's ovector). Used by hybrid modes.
-typedef std::vector<std::pair<int, int> > CaptureVec;
-
 // Class representing a single match, encapsulating to/from offsets.
 class MatchResult {
 public:
     MatchResult(unsigned long long start, unsigned long long end)
         : from(start), to(end) {}
-    MatchResult(unsigned long long start, unsigned long long end,
-                const CaptureVec &cap)
-            : from(start), to(end), captured(cap) {}
 
     bool operator<(const MatchResult &a) const {
         if (from != a.from) {
             return from < a.from;
         }
-        if (to != a.to) {
-            return to < a.to;
-        }
-        return captured < a.captured;
+        return to < a.to;
     }
 
     bool operator==(const MatchResult &a) const {
-        return from == a.from && to == a.to && captured == a.captured;
+        return from == a.from && to == a.to;
     }
 
     unsigned long long from;
     unsigned long long to;
-    CaptureVec captured;
 };
 
 enum ResultSource {
@@ -123,26 +112,6 @@ public:
         } else {
             matches_by_block[block].insert(m);
         }
-    }
-
-    // Add a match (with capturing vector)
-    void addMatch(unsigned long long from, unsigned long long to,
-                  const CaptureVec &cap, int block = 0) {
-        MatchResult m(from, to, cap);
-        matches.insert(m);
-
-        if (matches_by_block[block].find(m) != matches_by_block[block].end()) {
-            dupe_matches.insert(m);
-        } else {
-            matches_by_block[block].insert(m);
-        }
-    }
-
-    // Clear all matches.
-    void clear() {
-        matches.clear();
-        dupe_matches.clear();
-        matches_by_block.clear();
     }
 
     // Unexpected out of order match seen.

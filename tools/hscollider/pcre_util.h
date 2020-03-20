@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018, Intel Corporation
+ * Copyright (c) 2015-2017, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -35,8 +35,7 @@
  * Returns false if an unknown hyperscan flag is encountered.
  */
 bool getPcreFlags(unsigned int hs_flags, unsigned int *pcre_flags,
-                  bool *highlander, bool *prefilter, bool *som,
-                  bool *combination = nullptr, bool *quiet = nullptr);
+                  bool *highlander, bool *prefilter, bool *som);
 
 #endif /* PCRE_UTIL_H */
 

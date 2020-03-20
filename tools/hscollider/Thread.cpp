@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018, Intel Corporation
+ * Copyright (c) 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -35,7 +35,8 @@
 #include <cstdlib>
 #include <iostream>
 
-#ifndef _WIN32
+#include <pthread.h>
+
 static const size_t COLLIDER_THREAD_STACK_SIZE = 8192 * 1024;
 
 void Thread::start() {
@@ -78,16 +79,6 @@ create_thread:
     }
 }
 
-void Thread::join() { pthread_join(thread, nullptr); }
-
-#else // windows
-
-void Thread::start() { thread = std::thread(&runThread, this); }
-
-void Thread::join() { thread.join(); }
-
-#endif
-
 // Dispatch
 void *Thread::runThread(void *thr) {
     if (!no_signal_handler) {
@@ -97,6 +88,7 @@ void *Thread::runThread(void *thr) {
     return nullptr;
 }
 
+void Thread::join() { pthread_join(thread, nullptr); }
 
 Thread::Thread(size_t num) : thread_id(num) {}
 

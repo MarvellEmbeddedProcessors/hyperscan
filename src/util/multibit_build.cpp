@@ -192,11 +192,11 @@ vector<mmbit_sparse_iter> mmbBuildSparseIterator(const vector<u32> &bits,
 template<typename T>
 static
 void add_scatter(vector<T> *out, u32 offset, u64a mask) {
-    out->emplace_back();
-    T &su = out->back();
+    T su;
     memset(&su, 0, sizeof(su));
     su.offset = offset;
     su.val = mask;
+    out->push_back(su);
     DEBUG_PRINTF("add %llu at offset %u\n", mask, offset);
 }
 

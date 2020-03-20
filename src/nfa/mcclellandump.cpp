@@ -275,8 +275,7 @@ void nfaExecMcClellan16_dumpDot(const NFA *nfa, FILE *f) {
 
     dumpDotPreambleDfa(f);
 
-    u16 sherman_ceil = m->has_wide == 1 ? m->wide_limit : m->state_count;
-    for (u16 i = 1; i < sherman_ceil; i++) {
+    for (u16 i = 1; i < m->state_count; i++) {
         describeNode(nfa, m, i, f);
 
         u16 t[ALPHABET_SIZE];
@@ -315,8 +314,7 @@ void dumpAccelMasks(FILE *f, const mcclellan *m, const mstate_aux *aux) {
     fprintf(f, "Acceleration\n");
     fprintf(f, "------------\n");
 
-    u16 sherman_ceil = m->has_wide == 1 ? m->wide_limit : m->state_count;
-    for (u16 i = 0; i < sherman_ceil; i++) {
+    for (u16 i = 0; i < m->state_count; i++) {
         if (!aux[i].accel_offset) {
             continue;
         }
@@ -362,8 +360,7 @@ void dumpCommonHeader(FILE *f, const mcclellan *m) {
 static
 void dumpTransitions(FILE *f, const NFA *nfa, const mcclellan *m,
                      const mstate_aux *aux) {
-    u16 sherman_ceil = m->has_wide == 1 ? m->wide_limit : m->state_count;
-    for (u16 i = 0; i < sherman_ceil; i++) {
+    for (u16 i = 0; i < m->state_count; i++) {
         fprintf(f, "%05hu", i);
         if (aux[i].accel_offset) {
             dumpAccelText(f, (const union AccelAux *)((const char *)m +

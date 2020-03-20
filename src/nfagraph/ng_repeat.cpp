@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018, Intel Corporation
+ * Copyright (c) 2015-2017, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -38,6 +38,7 @@
 #include "ng_prune.h"
 #include "ng_reports.h"
 #include "ng_som_util.h"
+#include "ng_undirected.h"
 #include "ng_util.h"
 #include "nfa/accel.h"
 #include "nfa/limex_limits.h"
@@ -47,7 +48,6 @@
 #include "util/dump_charclass.h"
 #include "util/graph_range.h"
 #include "util/graph_small_color_map.h"
-#include "util/graph_undirected.h"
 #include "util/report_manager.h"
 #include "util/unordered.h"
 
@@ -73,41 +73,40 @@ namespace ue2 {
 
 namespace {
 
-/**
- * \brief Filter that retains only edges between vertices with the same
- * reachability. Special vertices are dropped.
- */
+/** \brief Filter that retains only edges between vertices with the same
+ * reachability. */
 template<class Graph>
 struct ReachFilter {
-    ReachFilter() = default;
+    ReachFilter() {}
     explicit ReachFilter(const Graph *g_in) : g(g_in) {}
 
     // Convenience typedefs.
-    using Traits = typename boost::graph_traits<Graph>;
-    using VertexDescriptor = typename Traits::vertex_descriptor;
-    using EdgeDescriptor = typename Traits::edge_descriptor;
-
-    bool operator()(const VertexDescriptor &v) const {
-        assert(g);
-        // Disallow special vertices, as otherwise we will try to remove them
-        // later.
-        return !is_special(v, *g);
-    }
+    typedef typename boost::graph_traits<Graph> Traits;
+    typedef typename Traits::vertex_descriptor VertexDescriptor;
+    typedef typename Traits::edge_descriptor EdgeDescriptor;
 
     bool operator()(const EdgeDescriptor &e) const {
         assert(g);
+
+        VertexDescriptor u = source(e, *g), v = target(e, *g);
+
+        // Disallow special vertices, as otherwise we will try to remove them
+        // later.
+        if (is_special(u, *g) || is_special(v, *g)) {
+            return false;
+        }
+
         // Vertices must have the same reach.
-        auto u = source(e, *g), v = target(e, *g);
         const CharReach &cr_u = (*g)[u].char_reach;
         const CharReach &cr_v = (*g)[v].char_reach;
+
         return cr_u == cr_v;
     }
 
     const Graph *g = nullptr;
 };
 
-using RepeatGraph = boost::filtered_graph<NGHolder, ReachFilter<NGHolder>,
-                                          ReachFilter<NGHolder>>;
+typedef boost::filtered_graph<NGHolder, ReachFilter<NGHolder>> RepeatGraph;
 
 struct ReachSubgraph {
     vector<NFAVertex> vertices;
@@ -301,9 +300,10 @@ void splitSubgraph(const NGHolder &g, const deque<NFAVertex> &verts,
     unordered_map<NFAVertex, NFAVertex> verts_map; // in g -> in verts_g
     fillHolder(&verts_g, g, verts, &verts_map);
 
-    const auto ug = make_undirected_graph(verts_g);
+    unordered_map<NFAVertex, NFAUndirectedVertex> old2new;
+    auto ug = createUnGraph(verts_g, true, true, old2new);
 
-    unordered_map<NFAVertex, u32> repeatMap;
+    unordered_map<NFAUndirectedVertex, u32> repeatMap;
 
     size_t num = connected_components(ug, make_assoc_property_map(repeatMap));
     DEBUG_PRINTF("found %zu connected repeat components\n", num);
@@ -312,8 +312,7 @@ void splitSubgraph(const NGHolder &g, const deque<NFAVertex> &verts,
     vector<ReachSubgraph> rs(num);
 
     for (auto v : verts) {
-        assert(!is_special(v, g));
-        auto vu = verts_map.at(v);
+        NFAUndirectedVertex vu = old2new.at(verts_map.at(v));
         auto rit = repeatMap.find(vu);
         if (rit == repeatMap.end()) {
             continue; /* not part of a repeat */
@@ -324,14 +323,8 @@ void splitSubgraph(const NGHolder &g, const deque<NFAVertex> &verts,
     }
 
     for (const auto &rsi : rs) {
-        if (rsi.vertices.empty()) {
-            // Empty elements can happen when connected_components finds a
-            // subgraph consisting entirely of specials (which aren't added to
-            // ReachSubgraph in the loop above). There's nothing we can do with
-            // these, so we skip them.
-            continue;
-        }
         DEBUG_PRINTF("repeat with %zu vertices\n", rsi.vertices.size());
+        assert(!rsi.vertices.empty());
         if (rsi.vertices.size() >= minNumVertices) {
             DEBUG_PRINTF("enqueuing\n");
             q.push(rsi);
@@ -1030,16 +1023,17 @@ static
 void buildReachSubgraphs(const NGHolder &g, vector<ReachSubgraph> &rs,
                          const u32 minNumVertices) {
     const ReachFilter<NGHolder> fil(&g);
-    const RepeatGraph rg(g, fil, fil);
+    const RepeatGraph rg(g, fil);
 
     if (!isCompBigEnough(rg, minNumVertices)) {
         DEBUG_PRINTF("component not big enough, bailing\n");
         return;
     }
 
-    const auto ug = make_undirected_graph(rg);
+    unordered_map<RepeatGraph::vertex_descriptor, NFAUndirectedVertex> old2new;
+    auto ug = createUnGraph(rg, true, true, old2new);
 
-    unordered_map<NFAVertex, u32> repeatMap;
+    unordered_map<NFAUndirectedVertex, u32> repeatMap;
 
     unsigned int num;
     num = connected_components(ug, make_assoc_property_map(repeatMap));
@@ -1051,7 +1045,8 @@ void buildReachSubgraphs(const NGHolder &g, vector<ReachSubgraph> &rs,
     rs.resize(num);
 
     for (auto v : topoOrder) {
-        auto rit = repeatMap.find(v);
+        NFAUndirectedVertex vu = old2new[v];
+        auto rit = repeatMap.find(vu);
         if (rit == repeatMap.end()) {
             continue; /* not part of a repeat */
         }

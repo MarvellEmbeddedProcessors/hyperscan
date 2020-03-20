@@ -54,75 +54,6 @@ version of Hyperscan used to scan with it.
 Hyperscan provides support for targeting a database at a particular CPU
 platform; see :ref:`instr_specialization` for details.
 
-=====================
-Compile Pure Literals 
-=====================
-
-Pure literal is a special case of regular expression. A character sequence is
-regarded as a pure literal if and only if each character is read and
-interpreted independently. No syntax association happens between any adjacent
-characters.
-
-For example, given an expression written as :regexp:`/bc?/`. We could say it is
-a regluar expression, with the meaning that character ``b`` followed by nothing
-or by one character ``c``. On the other view, we could also say it is a pure
-literal expression, with the meaning that this is a character sequence of 3-byte
-length, containing characters ``b``, ``c`` and ``?``. In regular case, the
-question mark character ``?`` has a particular syntax role called 0-1 quantifier,
-which has an syntax association with the character ahead of it. Similar
-characters exist in regular grammer like ``[``, ``]``, ``(``, ``)``, ``{``,
-``}``, ``-``, ``*``, ``+``, ``\``, ``|``, ``/``, ``:``, ``^``, ``.``, ``$``.
-While in pure literal case, all these meta characters lost extra meanings
-expect for that they are just common ASCII codes.
-
-Hyperscan is initially designed to process common regualr expressions. It is
-hence embedded with a complex parser to do comprehensive regular grammer
-interpretion. Particularly, the identification of above meta characters is the
-basic step for the interpretion of far more complex regular grammers.
-
-However in real cases, patterns may not always be regualr expressions. They
-could just be pure literals. Problem will come if the pure literals contain
-regular meta characters. Supposing fed directly into traditional Hyperscan
-compile API, all these meta characters will be interpreted in predefined ways,
-which is unnecessary and the result is totally out of expectation. To avoid
-such misunderstanding by traditional API, users have to preprocess these
-literal patterns by converting the meta characters into some other formats:
-either by adding a backslash ``\`` before certain meta characters, or by
-converting all the characters into a hexadecimal representation.
-
-In ``v5.2.0``, Hyperscan introduces 2 new compile APIs for pure literal patterns:
-
-#. :c:func:`hs_compile_lit`: compiles a single pure literal into a pattern
-   database.
-
-#. :c:func:`hs_compile_lit_multi`: compiles an array of pure literals into a
-   pattern database. All of the supplied patterns will be scanned for
-   concurrently at scan time, with user-supplied identifiers returned when they
-   match. 
-
-These 2 APIs are designed for use cases where all patterns contained in the
-target rule set are pure literals. Users can pass the initial pure literal
-content directly into these APIs without worrying about writing regular meta
-characters in their patterns. No preprocessing work is needed any more.
-
-For new APIs, the ``length`` of each literal pattern is a newly added parameter.
-Hyperscan needs to locate the end position of the input expression via clearly
-knowing each literal's length, not by simply identifying character ``\0`` of a
-string.
-
-Supported flags: :c:member:`HS_FLAG_CASELESS`, :c:member:`HS_FLAG_MULTILINE`,
-:c:member:`HS_FLAG_SINGLEMATCH`, :c:member:`HS_FLAG_SOM_LEFTMOST`.
-
-.. note:: We don't support literal compilation API with :ref:`extparam`. And
-          for runtime implementation, traditional runtime APIs can still be
-          used to match pure literal patterns.
-
-.. note:: If the target rule set contains at least one regular expression,
-          please use traditional compile APIs :c:func:`hs_compile`,
-          :c:func:`hs_compile_multi` and :c:func:`hs_compile_ext_multi`.
-          The new literal APIs introduced here are designed for rule sets
-          containing only pure literal expressions.
-
 ***************
 Pattern Support
 ***************
@@ -133,7 +64,7 @@ libpcre are supported. The use of unsupported constructs will result in
 compilation errors.
 
 The version of PCRE used to validate Hyperscan's interpretation of this syntax
-is 8.41 or above.
+is 8.41.
 
 ====================
 Supported Constructs
@@ -540,94 +471,3 @@ matching support. Here they are, in a nutshell:
 
 Approximate matching is always disabled by default, and can be enabled on a
 per-pattern basis by using an extended parameter described in :ref:`extparam`.
-
-.. _logical_combinations:
-
-********************
-Logical Combinations
-********************
-
-For situations when a user requires behaviour that depends on the presence or
-absence of matches from groups of patterns, Hyperscan provides support for the
-logical combination of patterns in a given pattern set, with three operators:
-``NOT``, ``AND`` and ``OR``.
-
-The logical value of such a combination is based on each expression's matching
-status at a given offset. The matching status of any expression has a boolean
-value: *false* if the expression has not yet matched or *true* if the expression
-has already matched. In particular, the value of a ``NOT`` operation at a given
-offset is *true* if the expression it refers to is *false* at this offset.
-
-For example, ``NOT 101`` means that expression 101 has not yet matched at this
-offset.
-
-A logical combination is passed to Hyperscan at compile time as an expression.
-This combination expression will raise matches at every offset where one of its
-sub-expressions matches and the logical value of the whole expression is *true*.
-
-To illustrate, here is an example combination expression: ::
-
-    ((301 OR 302) AND 303) AND (304 OR NOT 305)
-
-If expression 301 matches at offset 10, the logical value of 301 is *true*
-while the other patterns' values are *false*. Hence, the whole combination's value is
-*false*.
-
-Then expression 303 matches at offset 20. Now the values of 301 and 303 are
-*true* while the other patterns' values are still *false*. In this case, the
-combination's value is *true*, so the combination expression raises a match at
-offset 20.
-
-Finally, expression 305 has matches at offset 30. Now the values of 301, 303 and 305
-are *true* while the other patterns' values are still *false*. In this case, the
-combination's value is *false* and no match is raised.
-
-**Using Logical Combinations**
-
-In logical combination syntax, an expression is written as infix notation, it
-consists of operands, operators and parentheses. The operands are expression
-IDs, and operators are ``!`` (NOT), ``&`` (AND) or ``|`` (OR). For example, the
-combination described in the previous section would be written as: ::
-
-    ((301 | 302) & 303) & (304 | !305)
-
-In a logical combination expression:
-
- * The priority of operators are ``!`` > ``&`` > ``|``. For example:
-    - ``A&B|C`` is treated as ``(A&B)|C``,
-    - ``A|B&C`` is treated as ``A|(B&C)``,
-    - ``A&!B`` is treated as ``A&(!B)``.
- * Extra parentheses are allowed. For example:
-    - ``(A)&!(B)`` is the same as ``A&!B``,
-    - ``(A&B)|C`` is the same as ``A&B|C``.
- * Whitespace is ignored.
-
-To use a logical combination expression, it must be passed to one of the
-Hyperscan compile functions (:c:func:`hs_compile_multi`,
-:c:func:`hs_compile_ext_multi`) along with the :c:member:`HS_FLAG_COMBINATION` flag,
-which identifies the pattern as a logical combination expression. The patterns
-referred to in the logical combination expression must be compiled together in
-the same pattern set as the combination expression.
-
-When an expression has the :c:member:`HS_FLAG_COMBINATION` flag set, it ignores
-all other flags except the :c:member:`HS_FLAG_SINGLEMATCH` flag and the
-:c:member:`HS_FLAG_QUIET` flag.
-
-Hyperscan will accept logical combination expressions at compile time that
-evaluate to *true* when no patterns have matched, and report the match for
-combination at end of data if no patterns have matched; for example: ::
-
-    !101
-    !101|102
-    !101&!102
-    !(101&102)
-
-Patterns that are referred to as operands within a logical combination (for
-example, 301 through 305 in the examples above) may also use the
-:c:member:`HS_FLAG_QUIET` flag to silence the reporting of individual matches
-for those patterns. In the absence of this flag, all matches (for
-both individual patterns and their logical combinations) will be reported.
-
-When an expression has both the :c:member:`HS_FLAG_COMBINATION` flag and the
-:c:member:`HS_FLAG_QUIET` flag set, no matches for this logical combination
-will be reported.

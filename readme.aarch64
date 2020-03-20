@@ -1,0 +1,41 @@
+HyperScan for aarch64
+====================================
+
+Pre-requisits:
+==============
+- The following packages need to be installed on host machine:
+  cmake and ragel
+  NOTE: packages may be installed by using '> sudo apt-get install <pkg-name>'
+  NOTE: when building HyperScan for ARM, boost package is also required.
+    Here are the installation instructions for the boost pkg:
+  - wget -O boost_1_57_0.tar.gz http://sourceforge.net/projects/boost/files/boost/1.57.0/boost_1_57_0.tar.gz/download
+  - tar xzvf boost_1_57_0.tar.gz
+
+Configure and Build HyperScan:
+==============================
+- Before configuring and building the HyperScan, make sure to have the following
+  flags set correctly in setenv.aarch64 script:
+export CROSS=<arm-cross-compiler-dir>/bin/aarch64-linux-gnu-
+export CROSS_SYS=<arm-cross-compiler-system-dir>
+export BOOST_PATH=<boost-source-dir>
+NOTE: Before configuring and building the HyperScan, it is also recomended
+  to make sure the HyperScan repo is clean by using 'git clean -xdf'.
+- Configure HyperScan:
+  > mkdir <build-dir-name>
+  > cd <build-dir>
+  > cmake <hyperscan-source-dir> -DCMAKE_TOOLCHAIN_FILE=<hyperscan-source-dir>/cmake/arm64.cmake
+NOTE: in order to specify the output installation directory, add: -DCMAKE_INSTALL_PREFIX=<hyperscan-install-dir>
+- Build HyperScan:
+  > make -j8
+  > make install
+
+Install on board:
+=================
+- install all output folders of HyperScan by copy it from your PC to
+  the board file-system under the same path:
+  > cp -a <hyperscan-install-dir> <filesystem-path>/
+
+Running HyperScan example:
+==========================
+- the simplest and fastest is to try 'simple-grep' application:
+  > <hyperscan-build-dir>/bin/simplegrep <pattern> <input-file>

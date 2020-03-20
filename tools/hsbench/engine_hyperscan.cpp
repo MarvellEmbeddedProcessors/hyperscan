@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, Intel Corporation
+ * Copyright (c) 2016-2017, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -57,22 +57,20 @@
 
 using namespace std;
 
-EngineHSContext::EngineHSContext(const hs_database_t *db) {
+EngineContext::EngineContext(const hs_database_t *db) {
     hs_alloc_scratch(db, &scratch);
     assert(scratch);
 }
 
-EngineHSContext::~EngineHSContext() {
+EngineContext::~EngineContext() {
     hs_free_scratch(scratch);
 }
-
-EngineHSStream::~EngineHSStream() { }
 
 namespace /* anonymous */ {
 
 /** Scan context structure passed to the onMatch callback function. */
-struct ScanHSContext {
-    ScanHSContext(unsigned id_in, ResultEntry &result_in,
+struct ScanContext {
+    ScanContext(unsigned id_in, ResultEntry &result_in,
                 const EngineStream *stream_in)
         : id(id_in), result(result_in), stream(stream_in) {}
     unsigned id;
@@ -87,9 +85,9 @@ struct ScanHSContext {
  * "echo matches" is off.
  */
 static
-int HS_CDECL onMatch(unsigned int, unsigned long long,
-                     unsigned long long, unsigned int, void *ctx) {
-    ScanHSContext *sc = static_cast<ScanHSContext *>(ctx);
+int onMatch(unsigned int, unsigned long long, unsigned long long, unsigned int,
+            void *ctx) {
+    ScanContext *sc = static_cast<ScanContext *>(ctx);
     assert(sc);
     sc->result.matches++;
 
@@ -101,9 +99,9 @@ int HS_CDECL onMatch(unsigned int, unsigned long long,
  * matches" is enabled.
  */
 static
-int HS_CDECL onMatchEcho(unsigned int id, unsigned long long,
-                         unsigned long long to, unsigned int, void *ctx) {
-    ScanHSContext *sc = static_cast<ScanHSContext *>(ctx);
+int onMatchEcho(unsigned int id, unsigned long long, unsigned long long to,
+                unsigned int, void *ctx) {
+    ScanContext *sc = static_cast<ScanContext *>(ctx);
     assert(sc);
     sc->result.matches++;
 
@@ -116,7 +114,7 @@ int HS_CDECL onMatchEcho(unsigned int id, unsigned long long,
     return 0;
 }
 
-EngineHyperscan::EngineHyperscan(hs_database_t *db_in, CompileHSStats cs)
+EngineHyperscan::EngineHyperscan(hs_database_t *db_in, CompileStats cs)
     : db(db_in), compile_stats(std::move(cs)) {
     assert(db);
 }
@@ -126,15 +124,14 @@ EngineHyperscan::~EngineHyperscan() {
 }
 
 unique_ptr<EngineContext> EngineHyperscan::makeContext() const {
-    return ue2::make_unique<EngineHSContext>(db);
+    return ue2::make_unique<EngineContext>(db);
 }
 
 void EngineHyperscan::scan(const char *data, unsigned int len, unsigned int id,
-                           ResultEntry &result, EngineContext &ectx) const {
+                           ResultEntry &result, EngineContext &ctx) const {
     assert(data);
 
-    EngineHSContext &ctx = static_cast<EngineHSContext &>(ectx);
-    ScanHSContext sc(id, result, nullptr);
+    ScanContext sc(id, result, nullptr);
     auto callback = echo_matches ? onMatchEcho : onMatch;
     hs_error_t rv = hs_scan(db, data, len, 0, ctx.scratch, callback, &sc);
 
@@ -147,12 +144,11 @@ void EngineHyperscan::scan(const char *data, unsigned int len, unsigned int id,
 void EngineHyperscan::scan_vectored(const char *const *data,
                                     const unsigned int *len, unsigned int count,
                                     unsigned streamId, ResultEntry &result,
-                                    EngineContext &ectx) const {
+                                    EngineContext &ctx) const {
     assert(data);
     assert(len);
 
-    EngineHSContext &ctx = static_cast<EngineHSContext &>(ectx);
-    ScanHSContext sc(streamId, result, nullptr);
+    ScanContext sc(streamId, result, nullptr);
     auto callback = echo_matches ? onMatchEcho : onMatch;
     hs_error_t rv =
         hs_scan_vector(db, data, len, count, 0, ctx.scratch, callback, &sc);
@@ -163,10 +159,9 @@ void EngineHyperscan::scan_vectored(const char *const *data,
     }
 }
 
-unique_ptr<EngineStream> EngineHyperscan::streamOpen(EngineContext &ectx,
+unique_ptr<EngineStream> EngineHyperscan::streamOpen(EngineContext &ctx,
                                                      unsigned streamId) const {
-    EngineHSContext &ctx = static_cast<EngineHSContext &>(ectx);
-    auto stream = ue2::make_unique<EngineHSStream>();
+    auto stream = ue2::make_unique<EngineStream>();
     stream->ctx = &ctx;
 
     hs_open_stream(db, 0, &stream->id);
@@ -175,18 +170,17 @@ unique_ptr<EngineStream> EngineHyperscan::streamOpen(EngineContext &ectx,
         return nullptr;
     }
     stream->sn = streamId;
-    return move(stream);
+    return stream;
 }
 
 void EngineHyperscan::streamClose(unique_ptr<EngineStream> stream,
                                   ResultEntry &result) const {
     assert(stream);
 
-    auto &s = static_cast<EngineHSStream &>(*stream);
-    EngineContext &ectx = *s.ctx;
-    EngineHSContext &ctx = static_cast<EngineHSContext &>(ectx);
+    auto &s = static_cast<EngineStream &>(*stream);
+    EngineContext &ctx = *s.ctx;
 
-    ScanHSContext sc(0, result, &s);
+    ScanContext sc(0, result, &s);
     auto callback = echo_matches ? onMatchEcho : onMatch;
 
     assert(s.id);
@@ -199,10 +193,10 @@ void EngineHyperscan::streamScan(EngineStream &stream, const char *data,
                                  ResultEntry &result) const {
     assert(data);
 
-    auto &s = static_cast<EngineHSStream &>(stream);
-    EngineHSContext &ctx = *s.ctx;
+    auto &s = static_cast<EngineStream &>(stream);
+    EngineContext &ctx = *s.ctx;
 
-    ScanHSContext sc(id, result, &s);
+    ScanContext sc(id, result, &s);
     auto callback = echo_matches ? onMatchEcho : onMatch;
     hs_error_t rv =
         hs_scan_stream(s.id, data, len, 0, ctx.scratch, callback, &sc);
@@ -216,12 +210,11 @@ void EngineHyperscan::streamScan(EngineStream &stream, const char *data,
 void EngineHyperscan::streamCompressExpand(EngineStream &stream,
                                            vector<char> &temp) const {
     size_t used = 0;
-    auto &s = static_cast<EngineHSStream &>(stream);
-    hs_error_t err = hs_compress_stream(s.id, temp.data(), temp.size(),
+    hs_error_t err = hs_compress_stream(stream.id, temp.data(), temp.size(),
                                         &used);
     if (err == HS_INSUFFICIENT_SPACE) {
         temp.resize(used);
-        err = hs_compress_stream(s.id, temp.data(), temp.size(), &used);
+        err = hs_compress_stream(stream.id, temp.data(), temp.size(), &used);
     }
 
     if (err != HS_SUCCESS) {
@@ -230,10 +223,10 @@ void EngineHyperscan::streamCompressExpand(EngineStream &stream,
     }
 
     if (printCompressSize) {
-        printf("stream %u: compressed to %zu\n", s.sn, used);
+        printf("stream %u: compressed to %zu\n", stream.sn, used);
     }
 
-    err = hs_reset_and_expand_stream(s.id, temp.data(), temp.size(),
+    err = hs_reset_and_expand_stream(stream.id, temp.data(), temp.size(),
                                      nullptr, nullptr, nullptr);
 
     if (err != HS_SUCCESS) {
@@ -250,30 +243,15 @@ void EngineHyperscan::printStats() const {
     }
     printf("Signatures:        %s\n", compile_stats.signatures.c_str());
     printf("Hyperscan info:    %s\n", compile_stats.db_info.c_str());
-#ifndef _WIN32
     printf("Expression count:  %'zu\n", compile_stats.expressionCount);
     printf("Bytecode size:     %'zu bytes\n", compile_stats.compiledSize);
-#else
-    printf("Expression count:  %zu\n", compile_stats.expressionCount);
-    printf("Bytecode size:     %zu bytes\n", compile_stats.compiledSize);
-#endif
     printf("Database CRC:      0x%x\n", compile_stats.crc32);
     if (compile_stats.streaming) {
-#ifndef _WIN32
         printf("Stream state size: %'zu bytes\n", compile_stats.streamSize);
-#else
-        printf("Stream state size: %zu bytes\n", compile_stats.streamSize);
-#endif
     }
-#ifndef _WIN32
     printf("Scratch size:      %'zu bytes\n", compile_stats.scratchSize);
     printf("Compile time:      %'0.3Lf seconds\n", compile_stats.compileSecs);
     printf("Peak heap usage:   %'u bytes\n", compile_stats.peakMemorySize);
-#else
-    printf("Scratch size:      %zu bytes\n", compile_stats.scratchSize);
-    printf("Compile time:      %0.3Lf seconds\n", compile_stats.compileSecs);
-    printf("Peak heap usage:   %u bytes\n", compile_stats.peakMemorySize);
-#endif
 }
 
 void EngineHyperscan::sqlStats(SqlDB &sqldb) const {
@@ -411,51 +389,22 @@ buildEngineHyperscan(const ExpressionMap &expressions, ScanMode scan_mode,
             ext_ptr[i] = &ext[i];
         }
 
-        hs_compile_error_t *compile_err;
         Timer timer;
+        timer.start();
+
+        hs_compile_error_t *compile_err;
 
 #ifndef RELEASE_BUILD
-        if (useLiteralApi) {
-            // Pattern length computation should be done before timer start.
-            vector<size_t> lens(count);
-            for (unsigned int i = 0; i < count; i++) {
-                lens[i] = strlen(patterns[i]);
-            }
-            timer.start();
-            err = hs_compile_lit_multi_int(patterns.data(), flags.data(),
-                                           ids.data(), ext_ptr.data(),
-                                           lens.data(), count, full_mode,
-                                           nullptr, &db, &compile_err, grey);
-            timer.complete();
-        } else {
-            timer.start();
-            err = hs_compile_multi_int(patterns.data(), flags.data(),
-                                       ids.data(), ext_ptr.data(), count,
-                                       full_mode, nullptr, &db, &compile_err,
-                                       grey);
-            timer.complete();
-        }
+        err = hs_compile_multi_int(patterns.data(), flags.data(), ids.data(),
+                                   ext_ptr.data(), count, full_mode, nullptr,
+                                   &db, &compile_err, grey);
 #else
-        if (useLiteralApi) {
-            // Pattern length computation should be done before timer start.
-            vector<size_t> lens(count);
-            for (unsigned int i = 0; i < count; i++) {
-                lens[i] = strlen(patterns[i]);
-            }
-            timer.start();
-            err = hs_compile_lit_multi(patterns.data(), flags.data(),
-                                       ids.data(), lens.data(), count,
-                                       full_mode, nullptr, &db, &compile_err);
-            timer.complete();
-        } else {
-            timer.start();
-            err = hs_compile_ext_multi(patterns.data(), flags.data(),
-                                       ids.data(), ext_ptr.data(), count,
-                                       full_mode, nullptr, &db, &compile_err);
-            timer.complete();
-        }
+        err = hs_compile_ext_multi(patterns.data(), flags.data(), ids.data(),
+                                   ext_ptr.data(), count, full_mode, nullptr,
+                                   &db, &compile_err);
 #endif
 
+        timer.complete();
         compileSecs = timer.seconds();
         peakMemorySize = getPeakHeap();
 
@@ -520,7 +469,7 @@ buildEngineHyperscan(const ExpressionMap &expressions, ScanMode scan_mode,
     hs_free_scratch(scratch);
 
     // Collect summary information.
-    CompileHSStats cs;
+    CompileStats cs;
     cs.sigs_name = sigs_name;
     if (!sigs_name.empty()) {
         const auto pos = name.find_last_of('/');

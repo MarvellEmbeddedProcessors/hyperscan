@@ -20,4 +20,3 @@ Hyperscan |version| Developer's Reference Guide
    tools
    api_constants
    api_files
-   chimera

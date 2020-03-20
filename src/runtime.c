@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019, Intel Corporation
+ * Copyright (c) 2015-2017, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -67,9 +67,9 @@ void prefetch_data(const char *data, unsigned length) {
 
 /** dummy event handler for use when user does not provide one */
 static
-int HS_CDECL null_onEvent(UNUSED unsigned id, UNUSED unsigned long long from,
-                          UNUSED unsigned long long to, UNUSED unsigned flags,
-                          UNUSED void *ctxt) {
+int null_onEvent(UNUSED unsigned id, UNUSED unsigned long long from,
+                 UNUSED unsigned long long to, UNUSED unsigned flags,
+                 UNUSED void *ctxt) {
     return 0;
 }
 
@@ -150,7 +150,7 @@ void populateCoreInfo(struct hs_scratch *s, const struct RoseEngine *rose,
 }
 
 #define STATUS_VALID_BITS                                                      \
-    (STATUS_TERMINATED | STATUS_EXHAUSTED | STATUS_DELAY_DIRTY | STATUS_ERROR)
+    (STATUS_TERMINATED | STATUS_EXHAUSTED | STATUS_DELAY_DIRTY)
 
 /** \brief Retrieve status bitmask from stream state. */
 static really_inline
@@ -356,15 +356,6 @@ hs_error_t HS_CDECL hs_scan(const hs_database_t *db, const char *data,
                      length, NULL, 0, 0, 0, flags);
 
     clearEvec(rose, scratch->core_info.exhaustionVector);
-    if (rose->ckeyCount) {
-        scratch->core_info.logicalVector = scratch->bstate +
-                                           rose->stateOffsets.logicalVec;
-        scratch->core_info.combVector = scratch->bstate +
-                                        rose->stateOffsets.combVec;
-        scratch->tctxt.lastCombMatchOffset = 0;
-        clearLvec(rose, scratch->core_info.logicalVector,
-                  scratch->core_info.combVector);
-    }
 
     if (!length) {
         if (rose->boundary.reportZeroEodOffset) {
@@ -427,10 +418,7 @@ hs_error_t HS_CDECL hs_scan(const hs_database_t *db, const char *data,
     }
 
 done_scan:
-    if (unlikely(internal_matching_error(scratch))) {
-        unmarkScratchInUse(scratch);
-        return HS_UNKNOWN_ERROR;
-    } else if (told_to_stop_matching(scratch)) {
+    if (told_to_stop_matching(scratch)) {
         unmarkScratchInUse(scratch);
         return HS_SCAN_TERMINATED;
     }
@@ -449,23 +437,6 @@ done_scan:
     }
 
 set_retval:
-    if (unlikely(internal_matching_error(scratch))) {
-        unmarkScratchInUse(scratch);
-        return HS_UNKNOWN_ERROR;
-    }
-
-    if (rose->lastFlushCombProgramOffset) {
-        if (roseRunLastFlushCombProgram(rose, scratch, length)
-            == MO_HALT_MATCHING) {
-            if (unlikely(internal_matching_error(scratch))) {
-                unmarkScratchInUse(scratch);
-                return HS_UNKNOWN_ERROR;
-            }
-            unmarkScratchInUse(scratch);
-            return HS_SCAN_TERMINATED;
-        }
-    }
-
     DEBUG_PRINTF("done. told_to_stop_matching=%d\n",
                  told_to_stop_matching(scratch));
     hs_error_t rv = told_to_stop_matching(scratch) ? HS_SCAN_TERMINATED
@@ -529,10 +500,6 @@ void init_stream(struct hs_stream *s, const struct RoseEngine *rose,
     roseInitState(rose, state);
 
     clearEvec(rose, state + rose->stateOffsets.exhausted);
-    if (rose->ckeyCount) {
-        clearLvec(rose, state + rose->stateOffsets.logicalVec,
-                  state + rose->stateOffsets.combVec);
-    }
 
     // SOM state multibit structures.
     initSomState(rose, state);
@@ -638,7 +605,7 @@ void report_eod_matches(hs_stream_t *id, hs_scratch_t *scratch,
     char *state = getMultiState(id);
     u8 status = getStreamStatus(state);
 
-    if (status & (STATUS_TERMINATED | STATUS_EXHAUSTED | STATUS_ERROR)) {
+    if (status & (STATUS_TERMINATED | STATUS_EXHAUSTED)) {
         DEBUG_PRINTF("stream is broken, just freeing storage\n");
         return;
     }
@@ -646,15 +613,6 @@ void report_eod_matches(hs_stream_t *id, hs_scratch_t *scratch,
     populateCoreInfo(scratch, rose, state, onEvent, context, NULL, 0,
                      getHistory(state, rose, id->offset),
                      getHistoryAmount(rose, id->offset), id->offset, status, 0);
-
-    if (rose->ckeyCount) {
-        scratch->core_info.logicalVector = state +
-                                           rose->stateOffsets.logicalVec;
-        scratch->core_info.combVector = state + rose->stateOffsets.combVec;
-        if (!id->offset) {
-            scratch->tctxt.lastCombMatchOffset = id->offset;
-        }
-    }
 
     if (rose->somLocationCount) {
         loadSomFromStream(scratch, id->offset);
@@ -695,14 +653,6 @@ void report_eod_matches(hs_stream_t *id, hs_scratch_t *scratch,
     if (rose->hasSom && !told_to_stop_matching(scratch)) {
         int halt = flushStoredSomMatches(scratch, ~0ULL);
         if (halt) {
-            DEBUG_PRINTF("told to stop matching\n");
-            scratch->core_info.status |= STATUS_TERMINATED;
-        }
-    }
-
-    if (rose->lastFlushCombProgramOffset && !told_to_stop_matching(scratch)) {
-        if (roseRunLastFlushCombProgram(rose, scratch, id->offset)
-            == MO_HALT_MATCHING) {
             DEBUG_PRINTF("told to stop matching\n");
             scratch->core_info.status |= STATUS_TERMINATED;
         }
@@ -763,10 +713,6 @@ hs_error_t HS_CDECL hs_reset_and_copy_stream(hs_stream_t *to_id,
             return HS_SCRATCH_IN_USE;
         }
         report_eod_matches(to_id, scratch, onEvent, context);
-        if (unlikely(internal_matching_error(scratch))) {
-            unmarkScratchInUse(scratch);
-            return HS_UNKNOWN_ERROR;
-        }
         unmarkScratchInUse(scratch);
     }
 
@@ -882,11 +828,9 @@ hs_error_t hs_scan_stream_internal(hs_stream_t *id, const char *data,
     char *state = getMultiState(id);
 
     u8 status = getStreamStatus(state);
-    if (status & (STATUS_TERMINATED | STATUS_EXHAUSTED | STATUS_ERROR)) {
+    if (status & (STATUS_TERMINATED | STATUS_EXHAUSTED)) {
         DEBUG_PRINTF("stream is broken, halting scan\n");
-        if (status & STATUS_ERROR) {
-            return HS_UNKNOWN_ERROR;
-        } else if (status & STATUS_TERMINATED) {
+        if (status & STATUS_TERMINATED) {
             return HS_SCAN_TERMINATED;
         } else {
             return HS_SUCCESS;
@@ -905,14 +849,6 @@ hs_error_t hs_scan_stream_internal(hs_stream_t *id, const char *data,
     populateCoreInfo(scratch, rose, state, onEvent, context, data, length,
                      getHistory(state, rose, id->offset), historyAmount,
                      id->offset, status, flags);
-    if (rose->ckeyCount) {
-        scratch->core_info.logicalVector = state +
-                                           rose->stateOffsets.logicalVec;
-        scratch->core_info.combVector = state + rose->stateOffsets.combVec;
-        if (!id->offset) {
-            scratch->tctxt.lastCombMatchOffset = id->offset;
-        }
-    }
     assert(scratch->core_info.hlen <= id->offset
            && scratch->core_info.hlen <= rose->historyRequired);
 
@@ -960,9 +896,7 @@ hs_error_t hs_scan_stream_internal(hs_stream_t *id, const char *data,
 
     setStreamStatus(state, scratch->core_info.status);
 
-    if (unlikely(internal_matching_error(scratch))) {
-        return HS_UNKNOWN_ERROR;
-    } else if (likely(!can_stop_matching(scratch))) {
+    if (likely(!can_stop_matching(scratch))) {
         maintainHistoryBuffer(rose, state, data, length);
         id->offset += length; /* maintain offset */
 
@@ -1011,10 +945,6 @@ hs_error_t HS_CDECL hs_close_stream(hs_stream_t *id, hs_scratch_t *scratch,
             return HS_SCRATCH_IN_USE;
         }
         report_eod_matches(id, scratch, onEvent, context);
-        if (unlikely(internal_matching_error(scratch))) {
-            unmarkScratchInUse(scratch);
-            return HS_UNKNOWN_ERROR;
-        }
         unmarkScratchInUse(scratch);
     }
 
@@ -1040,10 +970,6 @@ hs_error_t HS_CDECL hs_reset_stream(hs_stream_t *id, UNUSED unsigned int flags,
             return HS_SCRATCH_IN_USE;
         }
         report_eod_matches(id, scratch, onEvent, context);
-        if (unlikely(internal_matching_error(scratch))) {
-            unmarkScratchInUse(scratch);
-            return HS_UNKNOWN_ERROR;
-        }
         unmarkScratchInUse(scratch);
     }
 
@@ -1158,10 +1084,7 @@ hs_error_t HS_CDECL hs_scan_vector(const hs_database_t *db,
     if (onEvent) {
         report_eod_matches(id, scratch, onEvent, context);
 
-        if (unlikely(internal_matching_error(scratch))) {
-            unmarkScratchInUse(scratch);
-            return HS_UNKNOWN_ERROR;
-        } else if (told_to_stop_matching(scratch)) {
+        if (told_to_stop_matching(scratch)) {
             unmarkScratchInUse(scratch);
             return HS_SCAN_TERMINATED;
         }
@@ -1259,10 +1182,6 @@ hs_error_t HS_CDECL hs_reset_and_expand_stream(hs_stream_t *to_stream,
             return HS_SCRATCH_IN_USE;
         }
         report_eod_matches(to_stream, scratch, onEvent, context);
-        if (unlikely(internal_matching_error(scratch))) {
-            unmarkScratchInUse(scratch);
-            return HS_UNKNOWN_ERROR;
-        }
         unmarkScratchInUse(scratch);
     }
 

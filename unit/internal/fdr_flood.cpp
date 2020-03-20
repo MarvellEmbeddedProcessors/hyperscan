@@ -26,6 +26,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef AARCH64
 #include "config.h"
 
 #include "ue2common.h"
@@ -557,4 +558,4 @@ TEST_P(FDRFloodp, StreamingMask) {
 }
 
 INSTANTIATE_TEST_CASE_P(FDRFlood, FDRFloodp, ValuesIn(getValidFdrEngines()));
-
+#endif

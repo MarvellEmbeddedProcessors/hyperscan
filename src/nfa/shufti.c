@@ -109,8 +109,11 @@ DUMP_MSK(128)
 #endif
 
 #define GET_LO_4(chars) and128(chars, low4bits)
+#ifdef AARCH64
+#define GET_HI_4(chars) and128(rshift64_m128(chars, 4), low4bits)
+#else
 #define GET_HI_4(chars) rshift64_m128(andnot128(low4bits, chars), 4)
-
+#endif
 static really_inline
 u32 block(m128 mask_lo, m128 mask_hi, m128 chars, const m128 low4bits,
           const m128 compare) {
@@ -177,13 +180,22 @@ const u8 *shuftiExec(m128 mask_lo, m128 mask_hi, const u8 *buf,
     // Reroll FTW.
 
     const u8 *last_block = buf_end - 16;
-    while (buf < last_block) {
+
+#ifdef AARCH64
+    for (const u8 *itPtr = buf; itPtr + 4*16 <= last_block;
+        itPtr += 4*16) {
+        __builtin_prefetch(itPtr);
+    }
+#endif
+
+    while ((buf < last_block) && !rv) {
         m128 lchars = load128(buf);
         rv = fwdBlock(mask_lo, mask_hi, lchars, buf, low4bits, zeroes);
-        if (rv) {
-            return rv;
-        }
         buf += 16;
+    }
+
+    if (rv) {
+        return rv;
     }
 
     // Use an unaligned load to mop up the last 16 bytes and get an accurate
@@ -263,13 +275,14 @@ const u8 *rshuftiExec(m128 mask_lo, m128 mask_hi, const u8 *buf,
     // Reroll FTW.
 
     const u8 *last_block = buf + 16;
-    while (buf_end > last_block) {
+    while ((buf_end > last_block) && !rv) {
         buf_end -= 16;
         m128 lchars = load128(buf_end);
         rv = revBlock(mask_lo, mask_hi, lchars, buf_end, low4bits, zeroes);
-        if (rv) {
-            return rv;
-        }
+    }
+
+    if (rv) {
+        return rv;
     }
 
     // Use an unaligned load to mop up the last 16 bytes and get an accurate
@@ -338,14 +351,15 @@ const u8 *shuftiDoubleExec(m128 mask1_lo, m128 mask1_hi,
     // Reroll FTW.
 
     const u8 *last_block = buf_end - 16;
-    while (buf < last_block) {
+    while ((buf < last_block) && !rv){
         m128 lchars = load128(buf);
         rv = fwdBlock2(mask1_lo, mask1_hi, mask2_lo, mask2_hi,
                        lchars, buf, low4bits, ones);
-        if (rv) {
-            return rv;
-        }
         buf += 16;
+    }
+
+    if (rv) {
+        return rv;
     }
 
     // Use an unaligned load to mop up the last 16 bytes and get an accurate

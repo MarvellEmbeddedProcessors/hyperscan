@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2018, Intel Corporation
+ * Copyright (c) 2016-2017, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,15 +30,22 @@
 #define ENGINEHYPERSCAN_H
 
 #include "expressions.h"
-#include "engine.h"
+#include "common.h"
+#include "sqldb.h"
 #include "hs_runtime.h"
 
 #include <memory>
 #include <string>
 #include <vector>
 
+/** Structure for the result of a single complete scan. */
+struct ResultEntry {
+    double seconds = 0;       //!< Time taken for scan.
+    unsigned int matches = 0; //!< Count of matches found.
+};
+
 /** Infomation about the database compile */
-struct CompileHSStats {
+struct CompileStats {
     std::string sigs_name;
     std::string signatures;
     std::string db_info;
@@ -53,38 +60,38 @@ struct CompileHSStats {
 };
 
 /** Engine context which is allocated on a per-thread basis. */
-class EngineHSContext : public EngineContext {
+class EngineContext {
 public:
-    explicit EngineHSContext(const hs_database_t *db);
-    ~EngineHSContext();
+    explicit EngineContext(const hs_database_t *db);
+    ~EngineContext();
 
     hs_scratch_t *scratch = nullptr;
 };
 
 /** Streaming mode scans have persistent stream state associated with them. */
-class EngineHSStream : public EngineStream {
+class EngineStream {
 public:
-    ~EngineHSStream();
     hs_stream_t *id;
-    EngineHSContext *ctx;
+    unsigned int sn;
+    EngineContext *ctx;
 };
 
 /** Hyperscan Engine for scanning data. */
-class EngineHyperscan : public Engine {
+class EngineHyperscan {
 public:
-    explicit EngineHyperscan(hs_database_t *db, CompileHSStats cs);
+    explicit EngineHyperscan(hs_database_t *db, CompileStats cs);
     ~EngineHyperscan();
 
     std::unique_ptr<EngineContext> makeContext() const;
 
     void scan(const char *data, unsigned int len, unsigned int id,
-              ResultEntry &result, EngineContext &ectx) const;
+              ResultEntry &result, EngineContext &ctx) const;
 
     void scan_vectored(const char *const *data, const unsigned int *len,
                        unsigned int count, unsigned int streamId,
-                       ResultEntry &result, EngineContext &ectx) const;
+                       ResultEntry &result, EngineContext &ctx) const;
 
-    std::unique_ptr<EngineStream> streamOpen(EngineContext &ectx,
+    std::unique_ptr<EngineStream> streamOpen(EngineContext &ctx,
                                              unsigned id) const;
 
     void streamClose(std::unique_ptr<EngineStream> stream,
@@ -102,7 +109,7 @@ public:
 
 private:
     hs_database_t *db;
-    CompileHSStats compile_stats;
+    CompileStats compile_stats;
 };
 
 namespace ue2 {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018, Intel Corporation
+ * Copyright (c) 2015-2017, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -66,16 +66,15 @@ typedef signed int s32;
 /* We append the 'a' for aligned, since these aren't common, garden variety
  * 64 bit values. The alignment is necessary for structs on some platforms,
  * so we don't end up performing accidental unaligned accesses. */
-#if defined(_WIN32) && ! defined(_WIN64)
-typedef unsigned long long ALIGN_ATTR(4) u64a;
-typedef signed long long ALIGN_ATTR(4) s64a;
-#else
 typedef unsigned long long ALIGN_ATTR(8) u64a;
 typedef signed long long ALIGN_ATTR(8) s64a;
-#endif
 
 /* get the SIMD types */
 #include "util/simd_types.h"
+
+#if defined(USE_SCALAR) || defined(USE_NEON)
+extern int optmax;
+#endif
 
 /** \brief Report identifier, used for internal IDs and external IDs (those
  * reported on match). */
@@ -102,8 +101,10 @@ typedef u32 ReportID;
 /* really_inline forces inlining always */
 #if !defined(_WIN32)
 #if defined(HS_OPTIMIZE)
+#undef really_inline
 #define really_inline inline __attribute__ ((always_inline, unused))
 #else
+#undef really_inline
 #define really_inline __attribute__ ((unused))
 #endif
 
@@ -162,8 +163,13 @@ typedef u32 ReportID;
 #endif
 
 #define ISALIGNED_N(ptr, n) (((uintptr_t)(ptr) & ((n) - 1)) == 0)
+#if defined(USE_SCALAR)
+#define ISALIGNED_16(ptr)   ISALIGNED_N((ptr), 8) /* scalar types only provide 8-byte alignment */
+#define ISALIGNED_CL(ptr)   ISALIGNED_N((ptr), 64)
+#else
 #define ISALIGNED_16(ptr)   ISALIGNED_N((ptr), 16)
 #define ISALIGNED_CL(ptr)   ISALIGNED_N((ptr), 64)
+#endif
 #if defined(HAVE_TYPEOF)
 #define ISALIGNED(ptr)      ISALIGNED_N((ptr), alignof(__typeof__(*(ptr))))
 #else

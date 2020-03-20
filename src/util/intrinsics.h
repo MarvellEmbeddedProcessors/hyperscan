@@ -60,7 +60,9 @@
 #elif defined(USE_INTRIN_H)
 #include <intrin.h>
 #else
-#error no intrinsics file
+#if defined(USE_SCALAR) || defined (USE_NEON)
+#include "scalar.h"
+#endif
 #endif
 
 #endif // INTRINSICS_H

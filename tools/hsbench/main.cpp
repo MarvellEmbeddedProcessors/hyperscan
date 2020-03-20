@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, Intel Corporation
+ * Copyright (c) 2016-2017, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -31,10 +31,6 @@
 #include "common.h"
 #include "data_corpus.h"
 #include "engine_hyperscan.h"
-#if defined(HS_HYBRID)
-#include "engine_chimera.h"
-#include "engine_pcre.h"
-#endif
 #include "expressions.h"
 #include "sqldb.h"
 #include "thread_barrier.h"
@@ -58,11 +54,7 @@
 #include <set>
 #include <thread>
 
-#ifndef _WIN32
 #include <getopt.h>
-#else
-#include "win_getopt.h"
-#endif
 #ifndef _WIN32
 #include <pthread.h>
 #if defined(HAVE_PTHREAD_NP_H)
@@ -87,7 +79,6 @@ unsigned int somPrecisionMode = HS_MODE_SOM_HORIZON_LARGE;
 bool forceEditDistance = false;
 unsigned editDistance = 0;
 bool printCompressSize = false;
-bool useLiteralApi = false;
 
 // Globals local to this file.
 static bool compressStream = false;
@@ -96,8 +87,6 @@ namespace /* anonymous */ {
 
 bool display_per_scan = false;
 ScanMode scan_mode = ScanMode::STREAMING;
-bool useHybrid = false;
-bool usePcre = false;
 unsigned repeats = 20;
 string exprPath("");
 string corpusFile("");
@@ -113,7 +102,7 @@ typedef void (*thread_func_t)(void *context);
 
 class ThreadContext : boost::noncopyable {
 public:
-    ThreadContext(unsigned num_in, const Engine &db_in,
+    ThreadContext(unsigned num_in, const EngineHyperscan &db_in,
                   thread_barrier &tb_in, thread_func_t function_in,
                   vector<DataBlock> corpus_data_in)
         : num(num_in), results(repeats), engine(db_in),
@@ -143,16 +132,6 @@ public:
 
     // Apply processor affinity (if available) to this thread.
     bool affine(UNUSED int cpu) {
-
-#if defined(_WIN32)
-        SYSTEM_INFO system_info;
-        GetSystemInfo(&system_info);
-        assert(cpu >= 0 && (DWORD)cpu < system_info.dwNumberOfProcessors);
-        DWORD_PTR mask = 1 << cpu;
-        DWORD_PTR rv = SetThreadAffinityMask(thr.native_handle(), mask);
-        return rv != 0;
-#endif
-
 #ifdef HAVE_DECL_PTHREAD_SETAFFINITY_NP
 #if defined(__FreeBSD__)
         cpuset_t cpuset;
@@ -176,7 +155,7 @@ public:
     unsigned num;
     Timer timer;
     vector<ResultEntry> results;
-    const Engine &engine;
+    const EngineHyperscan &engine;
     unique_ptr<EngineContext> enginectx;
     vector<DataBlock> corpus_data;
 
@@ -202,11 +181,7 @@ void usage(const char *error) {
            " (default: streaming).\n");
     printf("  -V              Benchmark in vectored mode"
            " (default: streaming).\n");
-#if defined(HS_HYBRID)
-    printf("  -H              Benchmark using Chimera (if supported).\n");
-    printf("  -P              Benchmark using PCRE (if supported).\n");
-#endif
-#if defined(HAVE_DECL_PTHREAD_SETAFFINITY_NP) || defined(_WIN32)
+#ifdef HAVE_DECL_PTHREAD_SETAFFINITY_NP
     printf("  -T CPU,CPU,...  Benchmark with threads on these CPUs.\n");
 #endif
     printf("  -i DIR          Don't compile, load from files in DIR"
@@ -219,7 +194,6 @@ void usage(const char *error) {
     printf("  --per-scan      Display per-scan Mbit/sec results.\n");
     printf("  --echo-matches  Display all matches that occur during scan.\n");
     printf("  --sql-out FILE  Output sqlite db.\n");
-    printf("  --literal-on    Use Hyperscan pure literal matching.\n");
     printf("  -S NAME         Signature set name (for sqlite db).\n");
     printf("\n\n");
 
@@ -240,8 +214,8 @@ struct BenchmarkSigs {
 static
 void processArgs(int argc, char *argv[], vector<BenchmarkSigs> &sigSets,
                  UNUSED unique_ptr<Grey> &grey) {
-    const char options[] = "-b:c:Cd:e:E:G:hHi:n:No:p:PsS:Vw:z:"
-#if defined(HAVE_DECL_PTHREAD_SETAFFINITY_NP) || defined(_WIN32)
+    const char options[] = "-b:c:Cd:e:E:G:hi:n:No:p:sS:Vw:z:"
+#ifdef HAVE_DECL_PTHREAD_SETAFFINITY_NP
         "T:" // add the thread flag
 #endif
         ;
@@ -252,7 +226,6 @@ void processArgs(int argc, char *argv[], vector<BenchmarkSigs> &sigSets,
     int do_echo_matches = 0;
     int do_sql_output = 0;
     int option_index = 0;
-    int literalFlag = 0;
     vector<string> sigFiles;
 
     static struct option longopts[] = {
@@ -260,7 +233,6 @@ void processArgs(int argc, char *argv[], vector<BenchmarkSigs> &sigSets,
         {"echo-matches", no_argument, &do_echo_matches, 1},
         {"compress-stream", no_argument, &do_compress, 1},
         {"sql-out", required_argument, &do_sql_output, 1},
-        {"literal-on", no_argument, &literalFlag, 1},
         {nullptr, 0, nullptr, 0}
     };
 
@@ -315,28 +287,12 @@ void processArgs(int argc, char *argv[], vector<BenchmarkSigs> &sigSets,
             usage(nullptr);
             exit(0);
             break;
-        case 'H':
-#if defined(HS_HYBRID)
-            useHybrid = true;
-#else
-            usage("Hybrid matcher not enabled in this build");
-            exit(1);
-#endif
-            break;
         case 'n':
             if (!fromString(optarg, repeats) || repeats == 0) {
                 usage("Couldn't parse argument to -n flag, should be"
                       " a positive integer.");
                 exit(1);
             }
-            break;
-        case 'P':
-#if defined(HS_HYBRID)
-            usePcre = true;
-#else
-            usage("PCRE matcher not enabled in this build");
-            exit(1);
-#endif
             break;
         case 's':
             in_sigfile = 2;
@@ -350,7 +306,7 @@ void processArgs(int argc, char *argv[], vector<BenchmarkSigs> &sigSets,
         case 'S':
             sigName.assign(optarg);
             break;
-#if defined(HAVE_DECL_PTHREAD_SETAFFINITY_NP) || defined(_WIN32)
+#ifdef HAVE_DECL_PTHREAD_SETAFFINITY_NP
         case 'T':
             if (!strToList(optarg, threadCores)) {
                 usage("Couldn't parse argument to -T flag, should be"
@@ -443,32 +399,12 @@ void processArgs(int argc, char *argv[], vector<BenchmarkSigs> &sigSets,
         exit(1);
     }
 
-    // Constraints on Chimera and PCRE engines
-    if (useHybrid || usePcre) {
-        if (useHybrid && usePcre) {
-            usage("Can't run both Chimera and PCRE.");
-            exit(1);
-        }
-        if (scan_mode != ScanMode::BLOCK) {
-            usage("Must specify block mode in Chimera or PCRE with "
-                  "the -N option.");
-            exit(1);
-        }
-
-        if (forceEditDistance || loadDatabases || saveDatabases) {
-            usage("No extended options are supported in Chimera or PCRE.");
-            exit(1);
-        }
-    }
-
     // Read in any -s signature sets.
     for (const auto &file : sigFiles) {
         SignatureSet sigs;
         loadSignatureList(file, sigs);
         sigSets.emplace_back(file, move(sigs));
     }
-
-    useLiteralApi = (bool)literalFlag;
 }
 
 /** Start the global timer. */
@@ -567,7 +503,7 @@ static
 void benchStreamingInternal(ThreadContext *ctx, vector<StreamInfo> &streams,
                             bool do_compress) {
     assert(ctx);
-    const Engine &e = ctx->engine;
+    const EngineHyperscan &e = ctx->engine;
     const vector<DataBlock> &blocks = ctx->corpus_data;
     vector<char> compress_buf(do_compress ? 1000 : 0);
 
@@ -724,11 +660,7 @@ void displayPerScanResults(const vector<unique_ptr<ThreadContext>> &threads,
         for (size_t j = 0; j != results.size(); j++) {
             const auto &r = results[j];
             double mbps = calc_mbps(r.seconds, bytesPerRun);
-#ifndef _WIN32
             printf("T %2u Scan %2zu: %'0.2f Mbit/sec\n", t->num, j, mbps);
-#else
-            printf("T %2u Scan %2zu: %0.2f Mbit/sec\n", t->num, j, mbps);
-#endif
         }
     }
     printf("\n");
@@ -773,7 +705,6 @@ void displayResults(const vector<unique_ptr<ThreadContext>> &threads,
         }
     }
 
-#ifndef _WIN32
     printf("Time spent scanning:       %'0.3f seconds\n", totalSecs);
     printf("Corpus size:               %'llu bytes ", bytesPerRun);
     switch (scan_mode) {
@@ -789,56 +720,22 @@ void displayResults(const vector<unique_ptr<ThreadContext>> &threads,
         printf("(%'zu blocks)\n", corpus_blocks.size());
         break;
     }
-#else
-    printf("Time spent scanning:       %0.3f seconds\n", totalSecs);
-    printf("Corpus size:               %llu bytes ", bytesPerRun);
-    switch (scan_mode) {
-    case ScanMode::STREAMING:
-        printf("(%zu blocks in %llu streams)\n", corpus_blocks.size(),
-               count_streams(corpus_blocks));
-        break;
-    case ScanMode::VECTORED:
-        printf("(%zu blocks in %llu vectors)\n", corpus_blocks.size(),
-               count_streams(corpus_blocks));
-        break;
-    case ScanMode::BLOCK:
-        printf("(%zu blocks)\n", corpus_blocks.size());
-        break;
-    }
-#endif
 
     u64a totalBytes = bytesPerRun * repeats * threads.size();
     u64a totalBlocks = corpus_blocks.size() * repeats * threads.size();
 
     double matchRate = ((double)matchesPerRun * 1024) / bytesPerRun;
-#ifndef _WIN32
     printf("Matches per iteration:     %'llu (%'0.3f matches/kilobyte)\n",
            matchesPerRun, matchRate);
-#else
-    printf("Matches per iteration:     %llu (%0.3f matches/kilobyte)\n",
-           matchesPerRun, matchRate);
-#endif
 
     double blockRate = (double)totalBlocks / (double)totalSecs;
-#ifndef _WIN32
     printf("Overall block rate:        %'0.2f blocks/sec\n", blockRate);
     printf("Mean throughput (overall): %'0.2Lf Mbit/sec\n",
            calc_mbps(totalSecs, totalBytes));
 
-#else
-    printf("Overall block rate:        %0.2f blocks/sec\n", blockRate);
-    printf("Mean throughput (overall): %0.2Lf Mbit/sec\n",
-           calc_mbps(totalSecs, totalBytes));
-
-#endif
     double lowestScanTime = fastestResult(threads);
-#ifndef _WIN32
     printf("Max throughput (per core): %'0.2Lf Mbit/sec\n",
            calc_mbps(lowestScanTime, bytesPerRun));
-#else
-    printf("Max throughput (per core): %0.2Lf Mbit/sec\n",
-           calc_mbps(lowestScanTime, bytesPerRun));
-#endif
     printf("\n");
 
     if (display_per_scan) {
@@ -915,7 +812,7 @@ void sqlResults(const vector<unique_ptr<ThreadContext>> &threads,
  * the same copy of the data.
  */
 static
-unique_ptr<ThreadContext> makeThreadContext(const Engine &db,
+unique_ptr<ThreadContext> makeThreadContext(const EngineHyperscan &db,
                                             const vector<DataBlock> &blocks,
                                             unsigned id,
                                             thread_barrier &sync_barrier) {
@@ -942,7 +839,7 @@ unique_ptr<ThreadContext> makeThreadContext(const Engine &db,
 
 /** Run the given benchmark. */
 static
-void runBenchmark(const Engine &db,
+void runBenchmark(const EngineHyperscan &db,
                   const vector<DataBlock> &corpus_blocks) {
     size_t numThreads;
     bool useAffinity = false;
@@ -951,7 +848,7 @@ void runBenchmark(const Engine &db,
         numThreads = 1;
     } else {
         numThreads = threadCores.size();
-#if defined(HAVE_DECL_PTHREAD_SETAFFINITY_NP) || defined(_WIN32)
+#ifdef HAVE_DECL_PTHREAD_SETAFFINITY_NP
         useAffinity = true;
 #else
         useAffinity = false;
@@ -991,12 +888,13 @@ void runBenchmark(const Engine &db,
 } // namespace
 
 /** Main driver. */
-int HS_CDECL main(int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     unique_ptr<Grey> grey;
 #if !defined(RELEASE_BUILD)
     grey = make_unique<Grey>();
 #endif
     setlocale(LC_ALL, ""); // use the user's locale
+
 
 #ifndef NDEBUG
     printf("\nWARNING: DO NOT BENCHMARK A HYPERSCAN BUILD WITH ASSERTIONS\n\n");
@@ -1039,18 +937,8 @@ int HS_CDECL main(int argc, char *argv[]) {
                 continue;
             }
 
-            unique_ptr<Engine> engine;
-            if (useHybrid) {
-#if defined(HS_HYBRID)
-                engine = buildEngineChimera(exprMap, s.name, sigName);
-            } else if (usePcre) {
-                engine = buildEnginePcre(exprMap, s.name, sigName);
-#endif
-            } else {
-                engine = buildEngineHyperscan(exprMap, scan_mode, s.name,
-                                              sigName, *grey);
-            }
-
+            auto engine = buildEngineHyperscan(exprMap, scan_mode, s.name,
+                                               sigName, *grey);
             if (!engine) {
                 printf("Error: expressions failed to compile.\n");
                 exit(1);
@@ -1070,9 +958,6 @@ int HS_CDECL main(int argc, char *argv[]) {
         }
     } catch (const SqlFailure &f) {
         cerr << f.message << '\n';
-        return -1;
-    } catch (const std::runtime_error &e) {
-        cerr << "Internal error: " << e.what() << '\n';
         return -1;
     }
 

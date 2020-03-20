@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019, Intel Corporation
+ * Copyright (c) 2015-2017, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -36,8 +36,7 @@
 enum ColliderMode {
     MODE_BLOCK,
     MODE_STREAMING,
-    MODE_VECTORED,
-    MODE_HYBRID
+    MODE_VECTORED
 };
 
 extern unsigned numThreads;
@@ -69,7 +68,6 @@ extern unsigned max_ue2_align;
 extern size_t g_memoryLimit;
 extern bool force_utf8;
 extern int force_prefilter;
-extern int no_groups;
 extern unsigned somPrecisionMode;
 extern unsigned limit_matches;
 extern unsigned randomSeed;
@@ -82,7 +80,6 @@ extern bool use_copy_stream;
 extern bool use_mangle_scratch;
 extern bool use_compress_expand;
 extern bool use_compress_reset_expand;
-extern bool use_literal_api;
 extern int abort_on_failure;
 extern int no_signal_handler;
 extern bool force_edit_distance;

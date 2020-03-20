@@ -27,15 +27,21 @@
  */
 
 #include "hs_common.h"
+#include "hs_compile.h"
 #include "util/cpuid_flags.h"
 #include "util/cpuid_inline.h"
 
 HS_PUBLIC_API
 hs_error_t HS_CDECL hs_valid_platform(void) {
+#if defined(USE_SCALAR) || defined(USE_NEON)
+
+	return HS_SUCCESS; 
+#else
     /* Hyperscan requires SSSE3, anything else is a bonus */
     if (check_ssse3()) {
         return HS_SUCCESS;
     } else {
         return HS_ARCH_ERROR;
     }
+#endif
 }

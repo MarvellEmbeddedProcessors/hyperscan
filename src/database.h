@@ -99,7 +99,6 @@ struct hs_database {
     u32 padding[16];
     char bytes[];
 };
-
 static really_inline
 const void *hs_get_bytecode(const struct hs_database *db) {
     return ((const char *)db + db->bytecode);

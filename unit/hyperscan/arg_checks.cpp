@@ -171,9 +171,7 @@ TEST(HyperscanArgChecks, SingleCompileBogusFlags) {
                                 nullptr, &db, &compile_err);
     EXPECT_EQ(HS_COMPILER_ERROR, err);
     EXPECT_TRUE(compile_err != nullptr);
-    EXPECT_STREQ("only HS_FLAG_QUIET and HS_FLAG_SINGLEMATCH "
-                 "are supported in combination "
-                 "with HS_FLAG_COMBINATION.", compile_err->message);
+    EXPECT_STREQ("Unrecognised flag.", compile_err->message);
 
     hs_free_compile_error(compile_err);
 }
@@ -1370,7 +1368,6 @@ TEST(HyperscanArgChecks, AllocScratchBogusScratch) {
     ASSERT_EQ(HS_SUCCESS, err);
     ASSERT_TRUE(db != nullptr);
     hs_scratch_t *blah = (hs_scratch_t *)malloc(100);
-    ASSERT_TRUE(blah != nullptr);
     memset(blah, 0xf0, 100);
     err = hs_alloc_scratch(db, &blah);
     ASSERT_EQ(HS_INVALID, err);
@@ -2035,7 +2032,6 @@ TEST(HyperscanArgChecks, ScratchSizeBadScratch) {
 TEST(HyperscanArgChecks, CloneBadScratch) {
     // Try cloning the scratch
     void *local_garbage = malloc(sizeof(garbage));
-    ASSERT_TRUE(local_garbage != nullptr);
     memcpy(local_garbage, garbage, sizeof(garbage));
     hs_scratch_t *cloned = nullptr;
     hs_scratch_t *scratch = (hs_scratch_t *)local_garbage;
@@ -2054,7 +2050,6 @@ TEST(HyperscanArgChecks, ScanBadScratch) {
     ASSERT_TRUE(db != nullptr);
 
     void *local_garbage = malloc(sizeof(garbage));
-    ASSERT_TRUE(local_garbage != nullptr);
     memcpy(local_garbage, garbage, sizeof(garbage));
 
     hs_scratch_t *scratch = (hs_scratch_t *)local_garbage;
@@ -2075,7 +2070,6 @@ TEST(HyperscanArgChecks, ScanStreamBadScratch) {
     ASSERT_EQ(HS_SUCCESS, err);
     ASSERT_TRUE(db != nullptr);
     void *local_garbage = malloc(sizeof(garbage));
-    ASSERT_TRUE(local_garbage != nullptr);
     memcpy(local_garbage, garbage, sizeof(garbage));
     hs_scratch_t *scratch = (hs_scratch_t *)local_garbage;
 
@@ -2111,7 +2105,6 @@ TEST(HyperscanArgChecks, ResetStreamBadScratch) {
     ASSERT_EQ(HS_SUCCESS, err);
     ASSERT_TRUE(db != nullptr);
     void *local_garbage = malloc(sizeof(garbage));
-    ASSERT_TRUE(local_garbage != nullptr);
     memcpy(local_garbage, garbage, sizeof(garbage));
     hs_scratch_t *scratch = (hs_scratch_t *)local_garbage;
 
@@ -2147,7 +2140,6 @@ TEST(HyperscanArgChecks, ScanVectorBadScratch) {
     ASSERT_EQ(HS_SUCCESS, err);
     ASSERT_TRUE(db != nullptr);
     void *local_garbage = malloc(sizeof(garbage));
-    ASSERT_TRUE(local_garbage != nullptr);
     memcpy(local_garbage, garbage, sizeof(garbage));
     hs_scratch_t *scratch = (hs_scratch_t *)local_garbage;
 

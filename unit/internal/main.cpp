@@ -31,6 +31,7 @@
 
 // Driver: run all the tests (defined in other source files in this directory)
 int HS_CDECL main(int argc, char **argv) {
+
     testing::InitGoogleTest(&argc, argv);
 
     return RUN_ALL_TESTS();

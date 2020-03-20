@@ -37,7 +37,9 @@
 #if defined(HAVE_SSE2)
 typedef __m128i m128;
 #else
+#if !defined (USE_SCALAR) && !defined (USE_NEON)
 typedef struct ALIGN_DIRECTIVE {u64a hi; u64a lo;} m128;
+#endif
 #endif
 
 #if defined(HAVE_AVX2)

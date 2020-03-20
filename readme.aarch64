@@ -23,7 +23,7 @@ NOTE: Before configuring and building the HyperScan, it is also recomended
 - Configure HyperScan:
   > mkdir <build-dir-name>
   > cd <build-dir>
-  > cmake <hyperscan-source-dir> -DCMAKE_TOOLCHAIN_FILE=<hyperscan-source-dir>/cmake/armada.cmake
+  > cmake <hyperscan-source-dir> -DCMAKE_TOOLCHAIN_FILE=<hyperscan-source-dir>/cmake/arm64.cmake
 NOTE: in order to specify the output installation directory, add: -DCMAKE_INSTALL_PREFIX=<hyperscan-install-dir>
 - Build HyperScan:
   > make -j8

@@ -2,8 +2,8 @@
 export BOOST_VERSION=1_57_0
 export BOOST_DOT_VERSION=${BOOST_VERSION//_/.}
 
-export CROSS_SYS=/home/chencho/projects/SDK-10.3.2.0-PR6/loki-bphy-release-output/host/aarch64-buildroot-linux-gnu/sysroot
-export CROSS=/home/chencho/projects/SDK-10.3.2.0-PR6/loki-bphy-release-output/host/bin/aarch64-marvell-linux-gnu-
+export CROSS_SYS=
+export CROSS=
 
 
 if [ ! -d "boost_$BOOST_VERSION" ];
